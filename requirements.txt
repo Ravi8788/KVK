@@ -1,0 +1,7 @@
+PyQt5==5.15.11
+SQLAlchemy==2.0.38
+psycopg2-binary==2.9.10
+reportlab==4.2.5
+python-dotenv==1.0.1
+passlib==1.7.4
+pyinstaller==6.12.0

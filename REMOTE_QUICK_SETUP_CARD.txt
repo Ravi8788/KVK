@@ -1,0 +1,149 @@
+# 📋 KVK System - Remote Setup Quick Card
+
+**Prepared for: 350 KM Remote (Internet)**  
+**Date: March 19, 2026**  
+**Your Host IP: 47.11.41.71**
+
+---
+
+## 📦 FILES TO COPY TO REMOTE MACHINE
+
+Copy these **3 files** to a folder on remote machine (e.g., `C:\KVK\`):
+
+1. ✅ `KVKSystem.exe` → The main application
+2. ✅ `.env` → Database configuration file
+3. ✅ `LAUNCHER_FOR_REMOTE_MACHINES.bat` → Auto-startup script
+
+**Folder structure:**
+```
+C:\KVK\
+├── KVKSystem.exe
+├── .env
+└── LAUNCHER_FOR_REMOTE_MACHINES.bat
+```
+
+---
+
+## ⚙️ .env FILE CONTENT
+
+Create a file named `.env` (plain text) with this content:
+
+```
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=kvk
+DB_USER=postgres
+DB_PASSWORD=Ravi@2004
+PG_BIN_DIR=
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=admin123
+```
+
+**⚠️ IMPORTANT:** `DB_HOST` MUST be `localhost` (NOT the public IP)
+
+---
+
+## 🚀 HOW TO START (On Remote Machine)
+
+### Option 1: Easy (Recommended)
+**Double-click:** `LAUNCHER_FOR_REMOTE_MACHINES.bat`
+
+This will:
+1. Auto-start SSH tunnel (encrypted connection)
+2. Wait 3 seconds
+3. Launch KVKSystem.exe
+4. Ask for SSH password (use your Windows admin password)
+
+### Option 2: Manual
+Open PowerShell and run:
+```powershell
+ssh -L 5432:192.168.31.99:5432 Administrator@47.11.41.71 -N
+```
+
+Then in **new PowerShell window**, run the app:
+```powershell
+C:\KVK\KVKSystem.exe
+```
+
+---
+
+## 🔑 LOGIN CREDENTIALS
+
+```
+Username: admin
+Password: admin123
+```
+
+---
+
+## ❌ TEST SSH CONNECTION FIRST
+
+Before running the app, test SSH connection in PowerShell:
+
+```powershell
+ssh -v Administrator@47.11.41.71 -p 22
+```
+
+You'll see:
+- First time: Type `yes` when asked
+- Then: Enter the **Windows admin password** from host machine
+
+**Expected:** Should show `Welcome to Microsoft Windows`
+
+---
+
+## ✅ EVERYTHING READY? START HERE
+
+1. **Copy 3 files** to `C:\KVK\` folder
+2. **Create .env** with content above
+3. **Test SSH** with command above
+4. **Double-click launcher** → Done!
+
+---
+
+## 🆘 COMMON ERRORS & FIXES
+
+### Error: "Connection refused"
+- [ ] Test SSH manually first: `ssh -v Administrator@47.11.41.71`
+- [ ] Host machine offline or unreachable
+- [ ] Router port forwarding not set up
+
+### Error: "authentication failed"
+- [ ] Check Windows admin password is correct
+- [ ] Verify DB password in .env is `Ravi@2004`
+
+### Error: "database kvk does not exist"
+- [ ] Host needs to run app once to initialize DB
+- [ ] Contact admin to verify database exists
+
+### Error: "Host key verification failed"
+- Type `yes` when asked to add host to known hosts
+
+---
+
+## 📱 NEED HELP?
+
+1. Check [SETUP_GUIDE_47.11.41.71.md](SETUP_GUIDE_47.11.41.71.md) for detailed steps
+2. Run SSH test manually
+3. Contact your system administrator
+
+---
+
+## 📊 QUICK REFERENCE
+
+| Setting | Value |
+|---------|-------|
+| Host Public IP | 47.11.41.71 |
+| Database | kvk |
+| DB User | postgres |
+| DB Password | Ravi@2004 |
+| Admin User | admin |
+| Admin Pass | admin123 |
+| SSH Port | 22 |
+| DB Port | 5432 |
+
+---
+
+**Version:** 1.0  
+**Created:** March 19, 2026  
+**Status:** Ready for Deployment ✅
