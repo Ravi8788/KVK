@@ -1,0 +1,33 @@
+# Python caches and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment and secrets
+.env
+.env.*
+!.env.remote_template
+!.env.any_desktop_secure_template
+
+# Logs and runtime artifacts
+logs/
+*.log
+
+# Build and distribution artifacts
+build/
+dist/
+*.spec
+
+# Reports and exports generated at runtime
+kvk_report_*.csv
+reports/test_export.csv
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
