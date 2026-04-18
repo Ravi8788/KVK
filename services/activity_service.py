@@ -91,6 +91,54 @@ class ActivityService:
             session.close()
 
     @staticmethod
+    def _extract_oft_district_tehsil(remarks: Optional[str]) -> Tuple[str, str]:
+        raw = (remarks or "").strip()
+        if not raw.startswith("OFT_META|"):
+            return "", ""
+
+        payload = raw[len("OFT_META|"):]
+        district_value = ""
+        tehsil_value = ""
+        for part in payload.split("|"):
+            if part.startswith("District:"):
+                district_value = part.replace("District:", "", 1).strip()
+            elif part.startswith("Tehsil:"):
+                tehsil_value = part.replace("Tehsil:", "", 1).strip()
+            elif part.startswith("Taluka:"):
+                # Backward compatibility for older OFT metadata.
+                tehsil_value = part.replace("Taluka:", "", 1).strip()
+
+        return district_value, tehsil_value
+
+    @staticmethod
+    def list_villages_for_oft(district: str, tehsil: str) -> List[str]:
+        district = (district or "").strip()
+        tehsil = (tehsil or "").strip()
+        if not district or not tehsil:
+            return []
+
+        session = SessionLocal()
+        try:
+            rows = (
+                session.query(Farmer.village, Activity.remarks)
+                .join(Activity, Activity.farmer_id == Farmer.id)
+                .filter(Activity.module_type == "On Farm Testing (OFT)")
+                .all()
+            )
+
+            matched = set()
+            for village, remarks in rows:
+                if not (village or "").strip():
+                    continue
+                row_district, row_tehsil = ActivityService._extract_oft_district_tehsil(remarks)
+                if row_district == district and row_tehsil == tehsil:
+                    matched.add(village.strip())
+
+            return sorted(matched)
+        finally:
+            session.close()
+
+    @staticmethod
     def _get_or_create_farmer(session, farmer_name: str, village: str, contact_number: str) -> Farmer:
         farmer = (
             session.query(Farmer)
