@@ -22,6 +22,13 @@ echo Host Public IP: %HOST_PUBLIC_IP%
 echo Connecting via SSH tunnel...
 echo.
 
+if not exist ".env" (
+    echo [ERROR] .env not found in this folder.
+    echo Copy .env.remote_template as .env and update DB_PASSWORD and ADMIN_PASSWORD.
+    pause
+    goto end
+)
+
 REM Check if SSH tunnel already running
 netstat -an | find ":5432" >nul
 if %errorlevel% equ 0 (

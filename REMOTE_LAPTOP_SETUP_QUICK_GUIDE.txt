@@ -1,0 +1,35 @@
+KVK Remote Laptop Setup (Quick)
+================================
+
+1) Copy these files to the other laptop in one folder:
+   - KVKSystem.exe
+   - .env (choose one template and rename to .env)
+   - LAUNCHER_FOR_REMOTE_MACHINES.bat (for SSH tunnel setup)
+
+2) Choose configuration style:
+   A) Same LAN:
+      - Use .env.lan_template -> rename to .env
+      - Set DB_HOST to database server LAN IP
+
+   B) Internet via SSH tunnel:
+      - Use .env.remote_template -> rename to .env
+      - Keep DB_HOST=localhost
+      - Launch using LAUNCHER_FOR_REMOTE_MACHINES.bat
+
+   C) Private VPN (Tailscale):
+      - Use .env.any_desktop_secure_template -> rename to .env
+      - Set DB_HOST to host Tailscale IP (100.x.x.x)
+
+3) Required security values in .env:
+   - APP_ENV=production
+   - Strong DB_PASSWORD
+   - Strong ADMIN_PASSWORD
+
+4) Run:
+   - For SSH setup: double-click LAUNCHER_FOR_REMOTE_MACHINES.bat
+   - For LAN/VPN direct DB: double-click KVKSystem.exe
+
+5) Troubleshooting:
+   - If DB error: verify DB_HOST, DB_PORT, DB_USER, DB_PASSWORD
+   - Ensure PostgreSQL server allows client IP/network
+   - Ensure firewall allows the chosen path (LAN/VPN/SSH tunnel)

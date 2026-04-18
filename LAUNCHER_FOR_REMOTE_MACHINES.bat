@@ -25,6 +25,13 @@ echo        Host IP: %HOST_PUBLIC_IP%
 echo ============================================================
 echo.
 
+if not exist ".env" (
+    echo [ERROR] .env not found in this folder.
+    echo Copy .env.remote_template as .env and update DB_PASSWORD and ADMIN_PASSWORD.
+    pause
+    goto end
+)
+
 REM Check if SSH tunnel already running
 netstat -an | find ":5432" >nul
 if %errorlevel% equ 0 (
@@ -85,12 +92,6 @@ REM Launch the application
 if exist "KVKSystem.exe" (
     start KVKSystem.exe
     echo [OK] KVKSystem launched!
-    echo.
-    echo ============================================================
-    echo  LOGIN CREDENTIALS:
-    echo  Username: admin
-    echo  Password: admin123
-    echo ============================================================
     echo.
     echo IMPORTANT: Keep this window open while using the app!
     echo When you close this window, SSH tunnel will stop.
