@@ -1,6 +1,12 @@
 KVK Remote Laptop Setup (Quick)
 ================================
 
+EASIEST OPTION (recommended):
+1) Put KVKSystem.exe and ONE_CLICK_CLIENT_SETUP.bat in same folder.
+2) Double-click ONE_CLICK_CLIENT_SETUP.bat.
+3) Enter DB details once; script creates .env automatically.
+4) Launch app when prompted.
+
 1) Copy these files to the other laptop in one folder:
    - KVKSystem.exe
    - .env (choose one template and rename to .env)
