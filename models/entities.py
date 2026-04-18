@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from models.base import Base
@@ -55,6 +55,16 @@ class Activity(Base):
     activity_date: Mapped[date] = mapped_column(Date, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     remarks: Mapped[Optional[str]] = mapped_column(Text)
+    oft_title: Mapped[Optional[str]] = mapped_column(String(255))
+    oft_batch_key: Mapped[Optional[str]] = mapped_column(String(64))
+    oft_crop_variety: Mapped[Optional[str]] = mapped_column(String(255))
+    oft_farmer_count: Mapped[Optional[int]] = mapped_column(Integer)
+    oft_technical_assessment: Mapped[Optional[str]] = mapped_column(Text)
+    oft_area: Mapped[Optional[str]] = mapped_column(String(255))
+    oft_farmer_scientist: Mapped[Optional[str]] = mapped_column(String(150))
+    oft_farmer_purpose: Mapped[Optional[str]] = mapped_column(String(100))
+    oft_farmer_district: Mapped[Optional[str]] = mapped_column(String(100))
+    oft_farmer_tehsil: Mapped[Optional[str]] = mapped_column(String(100))
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

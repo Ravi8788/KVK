@@ -183,6 +183,16 @@ class ActivityService:
                 activity_date=payload["activity_date"],
                 description=payload.get("description"),
                 remarks=payload.get("remarks"),
+                oft_title=payload.get("oft_title"),
+                oft_batch_key=payload.get("oft_batch_key"),
+                oft_crop_variety=payload.get("oft_crop_variety"),
+                oft_farmer_count=payload.get("oft_farmer_count"),
+                oft_technical_assessment=payload.get("oft_technical_assessment"),
+                oft_area=payload.get("oft_area"),
+                oft_farmer_scientist=payload.get("oft_farmer_scientist"),
+                oft_farmer_purpose=payload.get("oft_farmer_purpose"),
+                oft_farmer_district=payload.get("oft_farmer_district"),
+                oft_farmer_tehsil=payload.get("oft_farmer_tehsil"),
                 created_by=current_user_id,
             )
             session.add(activity)
@@ -225,6 +235,16 @@ class ActivityService:
             activity.activity_date = payload["activity_date"]
             activity.description = payload.get("description")
             activity.remarks = payload.get("remarks")
+            activity.oft_title = payload.get("oft_title")
+            activity.oft_batch_key = payload.get("oft_batch_key")
+            activity.oft_crop_variety = payload.get("oft_crop_variety")
+            activity.oft_farmer_count = payload.get("oft_farmer_count")
+            activity.oft_technical_assessment = payload.get("oft_technical_assessment")
+            activity.oft_area = payload.get("oft_area")
+            activity.oft_farmer_scientist = payload.get("oft_farmer_scientist")
+            activity.oft_farmer_purpose = payload.get("oft_farmer_purpose")
+            activity.oft_farmer_district = payload.get("oft_farmer_district")
+            activity.oft_farmer_tehsil = payload.get("oft_farmer_tehsil")
             session.commit()
 
             AuditService.log_action(
@@ -324,6 +344,7 @@ class ActivityService:
 
             records: List[Dict] = []
             for activity, farmer, department in rows:
+                is_oft = activity.module_type == "On Farm Testing (OFT)"
                 records.append(
                     {
                         "id": activity.id,
@@ -337,8 +358,74 @@ class ActivityService:
                         "activity_type": activity.activity_type,
                         "description": activity.description or "",
                         "remarks": activity.remarks or "",
+                        "oft_title": activity.oft_title or "",
+                        "oft_batch_key": activity.oft_batch_key or "",
+                        "oft_crop_variety": activity.oft_crop_variety or "",
+                        "oft_farmer_count": activity.oft_farmer_count,
+                        "oft_technical_assessment": activity.oft_technical_assessment or "",
+                        "oft_area": activity.oft_area or "",
+                        "oft_farmer_scientist": activity.oft_farmer_scientist or "",
+                        "oft_farmer_purpose": activity.oft_farmer_purpose or "",
+                        "oft_farmer_district": activity.oft_farmer_district or "",
+                        "oft_farmer_tehsil": activity.oft_farmer_tehsil or "",
                     }
                 )
             return records, total
+        finally:
+            session.close()
+
+    @staticmethod
+    def fetch_oft_batch_records(activity_id: int, batch_key: str = "") -> List[Dict]:
+        session = SessionLocal()
+        try:
+            if batch_key:
+                rows = (
+                    session.query(Activity, Farmer, Department)
+                    .join(Farmer, Activity.farmer_id == Farmer.id)
+                    .join(Department, Activity.department_id == Department.id)
+                    .filter(
+                        Activity.module_type == "On Farm Testing (OFT)",
+                        Activity.oft_batch_key == batch_key,
+                    )
+                    .order_by(Activity.id.asc())
+                    .all()
+                )
+            else:
+                rows = (
+                    session.query(Activity, Farmer, Department)
+                    .join(Farmer, Activity.farmer_id == Farmer.id)
+                    .join(Department, Activity.department_id == Department.id)
+                    .filter(Activity.id == activity_id)
+                    .all()
+                )
+
+            records: List[Dict] = []
+            for activity, farmer, department in rows:
+                records.append(
+                    {
+                        "id": activity.id,
+                        "farmer_name": farmer.farmer_name,
+                        "village": farmer.village,
+                        "contact_number": farmer.contact_number,
+                        "activity_date": activity.activity_date,
+                        "department": department.name,
+                        "department_id": department.id,
+                        "season": activity.season,
+                        "activity_type": activity.activity_type,
+                        "description": activity.description or "",
+                        "remarks": activity.remarks or "",
+                        "oft_title": activity.oft_title or "",
+                        "oft_batch_key": activity.oft_batch_key or "",
+                        "oft_crop_variety": activity.oft_crop_variety or "",
+                        "oft_farmer_count": activity.oft_farmer_count,
+                        "oft_technical_assessment": activity.oft_technical_assessment or "",
+                        "oft_area": activity.oft_area or "",
+                        "oft_farmer_scientist": activity.oft_farmer_scientist or "",
+                        "oft_farmer_purpose": activity.oft_farmer_purpose or "",
+                        "oft_farmer_district": activity.oft_farmer_district or "",
+                        "oft_farmer_tehsil": activity.oft_farmer_tehsil or "",
+                    }
+                )
+            return records
         finally:
             session.close()

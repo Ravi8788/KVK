@@ -1,5 +1,6 @@
 import sys
 import logging
+import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import traceback
@@ -53,12 +54,17 @@ def bootstrap_database() -> bool:
         BackupService._sync_primary_key_sequences()
         return True
     except Exception as exc:
+        logging.exception("Database bootstrap failed")
+        app_env = os.getenv("APP_ENV", "development").strip().lower()
         app = QApplication.instance() or QApplication(sys.argv)
+        detail_suffix = ""
+        if app_env != "production":
+            detail_suffix = f"\n\nTechnical details: {exc}"
         QMessageBox.critical(
             None,
             "Database Error",
-            "Could not initialize PostgreSQL. Check .env connection settings.\n\n"
-            f"Technical details: {exc}",
+            "Could not initialize PostgreSQL. Check .env connection settings."
+            + detail_suffix,
         )
         return False
 

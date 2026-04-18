@@ -20,6 +20,10 @@ class AuthController:
     def ensure_default_admin() -> None:
         username = os.getenv("ADMIN_USERNAME", "admin")
         password = os.getenv("ADMIN_PASSWORD", "admin123")
+        app_env = os.getenv("APP_ENV", "development").strip().lower()
+
+        if app_env == "production" and password in {"", "admin123", "password", "admin"}:
+            raise ValueError("Set a strong ADMIN_PASSWORD in production before first launch.")
 
         session = SessionLocal()
         try:

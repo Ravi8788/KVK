@@ -1,11 +1,14 @@
 from math import ceil
 from datetime import timedelta
+from uuid import uuid4
 
 from PyQt5.QtCore import QDate, Qt
 from PyQt5.QtWidgets import (
     QCompleter,
     QComboBox,
     QDateEdit,
+    QDialog,
+    QDialogButtonBox,
     QFormLayout,
     QFrame,
     QGridLayout,
@@ -110,9 +113,13 @@ class ActivityFormWidget(QWidget):
             "Visitor Farmers": ["Visitor Entry", "Consultation"],
         }
         self.selected_activity_id = None
+        self.oft_selected_activity_ids = []
+        self.oft_selected_batch_key = ""
+        self._table_row_records = []
         self.current_page = 1
         self.page_size = 100
         self.total_records = 0
+        self.oft_farmer_forms = []
 
         self._build_ui()
         self._apply_role_permissions()
@@ -208,12 +215,12 @@ class ActivityFormWidget(QWidget):
             form_left.addRow("Tehsil*", self.tehsil_input)
             form_left.addRow("Village*", self.village_input)
 
-            form_right.addRow("Mobile No.*", self.contact_input)
-            form_right.addRow("Name of Scientist*", self.scientist_input)
+            form_left.addRow("Mobile No.*", self.contact_input)
+            form_left.addRow("Name of Scientist*", self.scientist_input)
             self.department_label.setText("Name of Dept.*")
-            form_right.addRow(self.department_label, self.department_combo)
+            form_left.addRow(self.department_label, self.department_combo)
             self.activity_type_label.setText("Purpose*")
-            form_right.addRow(self.activity_type_label, self.activity_type_input)
+            form_left.addRow(self.activity_type_label, self.activity_type_input)
             
             # Hide season and description/remarks fields entirely for Visitor Farmers
             self.season_label.hide()
@@ -272,8 +279,11 @@ class ActivityFormWidget(QWidget):
         self._refresh_activity_type_options()
         self._refresh_season_options()
 
-        form_layout.addLayout(form_left, 0, 0)
-        form_layout.addLayout(form_right, 0, 1)
+        if self.module_name == "Visitor Farmers":
+            form_layout.addLayout(form_left, 0, 0)
+        else:
+            form_layout.addLayout(form_left, 0, 0)
+            form_layout.addLayout(form_right, 0, 1)
 
         btn_row = QHBoxLayout()
         self.save_btn = QPushButton("Save")
@@ -291,7 +301,10 @@ class ActivityFormWidget(QWidget):
         btn_row.addWidget(self.edit_btn)
         btn_row.addWidget(self.delete_btn)
         btn_row.addStretch(1)
-        form_layout.addLayout(btn_row, 1, 0, 1, 2)
+        if self.module_name == "Visitor Farmers":
+            form_layout.addLayout(btn_row, 1, 0)
+        else:
+            form_layout.addLayout(btn_row, 1, 0, 1, 2)
 
         root.addWidget(form_card)
 
@@ -397,6 +410,15 @@ class ActivityFormWidget(QWidget):
         pager_row = QHBoxLayout()
         self.prev_btn = QPushButton("Previous")
         self.next_btn = QPushButton("Next")
+        self.fld_table_edit_btn = None
+        self.fld_table_delete_btn = None
+        if self.module_name == "Front Line Demonstrations (FLD)":
+            self.fld_table_edit_btn = QPushButton("Open Edit Dialog")
+            self.fld_table_delete_btn = QPushButton("Delete Selected")
+            self.fld_table_edit_btn.setEnabled(False)
+            self.fld_table_delete_btn.setEnabled(False)
+            self.fld_table_edit_btn.clicked.connect(self._open_fld_edit_dialog)
+            self.fld_table_delete_btn.clicked.connect(self._delete_record)
         self.page_label = QLabel("Page 1")
 
         self.prev_btn.clicked.connect(self._prev_page)
@@ -404,6 +426,9 @@ class ActivityFormWidget(QWidget):
 
         pager_row.addWidget(self.prev_btn)
         pager_row.addWidget(self.next_btn)
+        if self.fld_table_edit_btn is not None:
+            pager_row.addWidget(self.fld_table_edit_btn)
+            pager_row.addWidget(self.fld_table_delete_btn)
         pager_row.addWidget(self.page_label)
         pager_row.addStretch(1)
 
@@ -522,6 +547,7 @@ class ActivityFormWidget(QWidget):
         self.reset_btn.setMinimumHeight(34)
         self.edit_btn.setMinimumHeight(34)
         self.delete_btn.setMinimumHeight(34)
+        self.edit_btn.setText("Edit (Dialog)")
 
         self.save_btn.clicked.connect(self._save_record)
         self.reset_btn.clicked.connect(self._reset_form)
@@ -535,6 +561,12 @@ class ActivityFormWidget(QWidget):
         btn_row.addStretch(1)
         form_layout.addRow(btn_row)
 
+        # OFT final save is intentionally placed below farmer forms.
+        self.save_btn.hide()
+
+        self.oft_saved_summary_label = QLabel("Saved farmer forms: 0")
+        form_layout.addRow(self.oft_saved_summary_label)
+
         form_card.hide()
         root.addWidget(form_card)
 
@@ -546,6 +578,14 @@ class ActivityFormWidget(QWidget):
         self.oft_boxes_scroll.verticalScrollBar().setSingleStep(18)
         self.oft_boxes_scroll.hide()
         root.addWidget(self.oft_boxes_scroll)
+
+        save_all_row = QHBoxLayout()
+        self.oft_save_all_btn = QPushButton("Save All Changes")
+        self.oft_save_all_btn.setMinimumHeight(36)
+        self.oft_save_all_btn.clicked.connect(self._save_record)
+        save_all_row.addWidget(self.oft_save_all_btn)
+        save_all_row.addStretch(1)
+        root.addLayout(save_all_row)
 
         self._refresh_activity_type_options()
         self._update_oft_form_visibility()
@@ -595,20 +635,25 @@ class ActivityFormWidget(QWidget):
 
         table_layout.addLayout(filters_row)
 
-        self.table = QTableWidget(0, 12)
+        self.table = QTableWidget(0, 17)
         headers = [
             "ID",
-            "Farmer",
-            "Village",
-            "Contact",
             "Date",
-            "Department",
+            "Title of OFT",
+            "Crop Variety",
+            "No. of Farmers",
+            "Farmer Name",
+            "Farmer Village",
+            "Mobile No.",
+            "Scientist",
+            "Purpose",
             "District",
             "Tehsil",
-            "Season",
+            "Technical Assessment",
+            "Area",
+            "Department",
             "Activity",
-            "Description",
-            "Remarks",
+            "Season",
         ]
         self.table.setHorizontalHeaderLabels(headers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -618,6 +663,12 @@ class ActivityFormWidget(QWidget):
         pager_row = QHBoxLayout()
         self.prev_btn = QPushButton("Previous")
         self.next_btn = QPushButton("Next")
+        self.oft_table_edit_btn = QPushButton("Open Edit Dialog")
+        self.oft_table_delete_btn = QPushButton("Delete Selected")
+        self.oft_table_edit_btn.setEnabled(False)
+        self.oft_table_delete_btn.setEnabled(False)
+        self.oft_table_edit_btn.clicked.connect(self._open_oft_edit_dialog)
+        self.oft_table_delete_btn.clicked.connect(self._delete_record)
         self.page_label = QLabel("Page 1")
 
         self.prev_btn.clicked.connect(self._prev_page)
@@ -625,6 +676,8 @@ class ActivityFormWidget(QWidget):
 
         pager_row.addWidget(self.prev_btn)
         pager_row.addWidget(self.next_btn)
+        pager_row.addWidget(self.oft_table_edit_btn)
+        pager_row.addWidget(self.oft_table_delete_btn)
         pager_row.addWidget(self.page_label)
         pager_row.addStretch(1)
 
@@ -649,6 +702,10 @@ class ActivityFormWidget(QWidget):
         if hasattr(self, "oft_boxes_scroll") and self.oft_boxes_scroll is not None:
             self.oft_boxes_scroll.setVisible(header_ready and self.oft_boxes_visible)
 
+        if hasattr(self, "oft_save_all_btn") and self.oft_save_all_btn is not None:
+            self.oft_save_all_btn.setVisible(header_ready and self.oft_boxes_visible)
+            self.oft_save_all_btn.setEnabled(header_ready and self.oft_boxes_visible)
+
         self.save_btn.setEnabled(header_ready)
         self.edit_btn.setEnabled(header_ready and self.selected_activity_id is not None)
         self.delete_btn.setEnabled(header_ready and self.selected_activity_id is not None)
@@ -663,6 +720,7 @@ class ActivityFormWidget(QWidget):
             return
 
         farmer_count = int(count_text)
+        self.oft_farmer_forms = []
         while self.oft_farmer_boxes_layout.count():
             item = self.oft_farmer_boxes_layout.takeAt(0)
             widget = item.widget()
@@ -717,6 +775,10 @@ class ActivityFormWidget(QWidget):
             purpose.addItems(["Visitor Entry", "Consultation"])
             purpose.setMinimumHeight(32)
 
+            save_farmer_btn = QPushButton("Save Farmer Data")
+            save_farmer_btn.setMinimumHeight(32)
+            farmer_save_state = QLabel("Not saved")
+
             def _refresh_box_villages(_index: int = -1, district_combo=district, tehsil_combo=tehsil, village_combo=village) -> None:
                 district_value = district_combo.currentText().strip()
                 tehsil_value = tehsil_combo.currentText().strip()
@@ -757,13 +819,161 @@ class ActivityFormWidget(QWidget):
             box_layout.addRow("Mobile No.*", mobile)
             box_layout.addRow("Name of Scientist*", scientist)
             box_layout.addRow("Purpose*", purpose)
+            farmer_btn_row = QHBoxLayout()
+            farmer_btn_row.addWidget(save_farmer_btn)
+            farmer_btn_row.addWidget(farmer_save_state)
+            farmer_btn_row.addStretch(1)
+            box_layout.addRow(farmer_btn_row)
+
+            form_state = {
+                "index": index,
+                "farmer_name": farmer_name,
+                "district": district,
+                "tehsil": tehsil,
+                "village": village,
+                "mobile": mobile,
+                "scientist": scientist,
+                "purpose": purpose,
+                "saved": False,
+                "state_label": farmer_save_state,
+                "save_btn": save_farmer_btn,
+            }
+            self.oft_farmer_forms.append(form_state)
+
+            save_farmer_btn.clicked.connect(lambda _checked=False, form=form_state: self._save_oft_farmer_form(form))
 
             self.oft_farmer_boxes_layout.addWidget(box)
 
         self.oft_boxes_visible = True
         self.oft_farmer_boxes_card.setVisible(True)
         self.oft_boxes_scroll.setVisible(True)
+        self._update_oft_saved_summary()
         self._update_oft_form_visibility()
+
+    def _collect_oft_common_payload(self):
+        payload = self._collect_payload()
+        if not self._validate_payload(payload):
+            return None
+        return payload
+
+    def _validate_oft_farmer_form(self, form_state) -> bool:
+        farmer_name = form_state["farmer_name"].text().strip()
+        district_value = form_state["district"].currentText().strip()
+        tehsil_value = form_state["tehsil"].currentText().strip()
+        village_value = form_state["village"].currentText().strip()
+        mobile_value = form_state["mobile"].text().strip()
+        scientist_value = form_state["scientist"].text().strip()
+        purpose_value = form_state["purpose"].currentText().strip()
+
+        if not farmer_name:
+            QMessageBox.warning(self, "Validation", f"Enter farmer name in Farmer Form {form_state['index'] + 1}.")
+            return False
+        if not self._is_valid_district(district_value):
+            QMessageBox.warning(self, "Validation", f"Select valid district in Farmer Form {form_state['index'] + 1}.")
+            return False
+        if not self._is_valid_tehsil(district_value, tehsil_value):
+            QMessageBox.warning(self, "Validation", f"Select valid tehsil in Farmer Form {form_state['index'] + 1}.")
+            return False
+        if not village_value:
+            QMessageBox.warning(self, "Validation", f"Select village in Farmer Form {form_state['index'] + 1}.")
+            return False
+        if not mobile_value.isdigit() or len(mobile_value) < 10:
+            QMessageBox.warning(self, "Validation", f"Enter valid mobile number in Farmer Form {form_state['index'] + 1}.")
+            return False
+        if not scientist_value:
+            QMessageBox.warning(self, "Validation", f"Enter scientist name in Farmer Form {form_state['index'] + 1}.")
+            return False
+        if not purpose_value:
+            QMessageBox.warning(self, "Validation", f"Select purpose in Farmer Form {form_state['index'] + 1}.")
+            return False
+        return True
+
+    def _save_oft_farmer_form(self, form_state) -> None:
+        if self.module_name != "On Farm Testing (OFT)":
+            return
+
+        common_payload = self._collect_oft_common_payload()
+        if common_payload is None:
+            return
+
+        if not self._validate_oft_farmer_form(form_state):
+            return
+
+        form_state["saved"] = True
+        form_state["state_label"].setText("Saved")
+        form_state["save_btn"].setText("Saved")
+        self._update_oft_saved_summary()
+
+    def _update_oft_saved_summary(self) -> None:
+        if self.module_name != "On Farm Testing (OFT)":
+            return
+        saved_count = sum(1 for form_state in self.oft_farmer_forms if form_state.get("saved"))
+        total_count = len(self.oft_farmer_forms)
+        if hasattr(self, "oft_saved_summary_label"):
+            self.oft_saved_summary_label.setText(f"Saved farmer forms: {saved_count} of {total_count}")
+
+    def _save_all_oft_records(self) -> None:
+        common_payload = self._collect_oft_common_payload()
+        if common_payload is None:
+            return
+
+        oft_batch_key = f"OFT-{uuid4().hex[:12]}"
+
+        farmer_count = int(self.contact_input.text().strip()) if self.contact_input.text().strip().isdigit() else 0
+        if farmer_count <= 0:
+            QMessageBox.warning(self, "Validation", "Enter valid No. of Farmers and click Show.")
+            return
+        if not self.oft_farmer_forms:
+            QMessageBox.warning(self, "Validation", "Click Show to generate farmer forms first.")
+            return
+        if len(self.oft_farmer_forms) != farmer_count:
+            QMessageBox.warning(self, "Validation", "Farmer form count does not match No. of Farmers. Click Show again.")
+            return
+
+        unsaved_forms = [form_state for form_state in self.oft_farmer_forms if not form_state.get("saved")]
+        if unsaved_forms:
+            first_unsaved = unsaved_forms[0]["index"] + 1
+            QMessageBox.warning(self, "Validation", f"Save Farmer Form {first_unsaved} before Save All Changes.")
+            return
+
+        try:
+            for form_state in self.oft_farmer_forms:
+                district_value = form_state["district"].currentText().strip()
+                tehsil_value = form_state["tehsil"].currentText().strip()
+                village_value = form_state["village"].currentText().strip()
+                scientist_value = form_state["scientist"].text().strip()
+                purpose_value = form_state["purpose"].currentText().strip()
+
+                payload = {
+                    "module_type": self.module_name,
+                    "farmer_name": form_state["farmer_name"].text().strip(),
+                    "village": village_value,
+                    "contact_number": form_state["mobile"].text().strip(),
+                    "activity_date": common_payload["activity_date"],
+                    "department_id": common_payload["department_id"],
+                    "season": common_payload["season"],
+                    "activity_type": common_payload["activity_type"],
+                    "description": common_payload["description"],
+                    "remarks": f"OFT_META|District: {district_value}|Tehsil: {tehsil_value}",
+                    "oft_title": common_payload["farmer_name"],
+                    "oft_batch_key": oft_batch_key,
+                    "oft_crop_variety": common_payload["village"],
+                    "oft_farmer_count": int(common_payload["contact_number"]),
+                    "oft_technical_assessment": common_payload["description"],
+                    "oft_area": common_payload["remarks"],
+                    "oft_farmer_scientist": scientist_value,
+                    "oft_farmer_purpose": purpose_value,
+                    "oft_farmer_district": district_value,
+                    "oft_farmer_tehsil": tehsil_value,
+                }
+                ActivityService.create_activity(payload, self.current_user.id)
+
+            QMessageBox.information(self, "Saved", "All OFT farmer records saved successfully.")
+            self._reset_form()
+            self.current_page = 1
+            self._load_table()
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", f"Could not save OFT records: {exc}")
 
     def _apply_role_permissions(self) -> None:
         if not self.read_only:
@@ -786,6 +996,8 @@ class ActivityFormWidget(QWidget):
         self.save_btn.setEnabled(False)
         self.edit_btn.setEnabled(False)
         self.delete_btn.setEnabled(False)
+        if hasattr(self, "oft_save_all_btn"):
+            self.oft_save_all_btn.setEnabled(False)
 
     def _collect_payload(self):
         activity_type = self.activity_type_input.currentText().strip()
@@ -1012,6 +1224,10 @@ class ActivityFormWidget(QWidget):
         return True
 
     def _save_record(self) -> None:
+        if self.module_name == "On Farm Testing (OFT)":
+            self._save_all_oft_records()
+            return
+
         payload = self._collect_payload()
         if not self._validate_payload(payload):
             return
@@ -1030,6 +1246,10 @@ class ActivityFormWidget(QWidget):
             QMessageBox.warning(self, "Selection", "Select a row to edit.")
             return
 
+        if self.module_name == "On Farm Testing (OFT)":
+            self._open_oft_edit_dialog()
+            return
+
         payload = self._collect_payload()
         if not self._validate_payload(payload):
             return
@@ -1042,18 +1262,433 @@ class ActivityFormWidget(QWidget):
         except Exception as exc:
             QMessageBox.critical(self, "Error", f"Could not update record: {exc}")
 
+    def _open_oft_edit_dialog(self) -> None:
+        batch_records = ActivityService.fetch_oft_batch_records(self.selected_activity_id, self.oft_selected_batch_key)
+        if not batch_records:
+            QMessageBox.warning(self, "Selection", "Could not load OFT data for edit dialog.")
+            return
+
+        common = batch_records[0]
+        activity_ids = [record["id"] for record in batch_records]
+        batch_key = common.get("oft_batch_key", "").strip() or f"OFT-{uuid4().hex[:12]}"
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Edit OFT Batch")
+        dialog.resize(980, 760)
+
+        root = QVBoxLayout(dialog)
+        root.setContentsMargins(10, 10, 10, 10)
+        root.setSpacing(10)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setSpacing(10)
+
+        upper_card = QFrame()
+        upper_card.setObjectName("Card")
+        upper_form = QFormLayout(upper_card)
+        upper_form.setHorizontalSpacing(12)
+        upper_form.setVerticalSpacing(8)
+        upper_form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+        edit_date = QDateEdit()
+        edit_date.setCalendarPopup(True)
+        date_value = common.get("activity_date")
+        if date_value:
+            edit_date.setDate(QDate(date_value.year, date_value.month, date_value.day))
+        else:
+            edit_date.setDate(QDate.currentDate())
+
+        edit_title = QLineEdit(common.get("oft_title", ""))
+        edit_crop = QLineEdit(common.get("oft_crop_variety", ""))
+        edit_count = QLineEdit(str(common.get("oft_farmer_count") or len(batch_records)))
+        edit_count.setReadOnly(True)
+        edit_technical = QTextEdit(common.get("oft_technical_assessment", ""))
+        edit_technical.setFixedHeight(90)
+        edit_area = QLineEdit(common.get("oft_area", ""))
+
+        edit_department = QComboBox()
+        edit_department.addItem("Select Department", None)
+        for dept in self.departments:
+            if dept.name.strip().lower() == "agricultural extension":
+                continue
+            edit_department.addItem(dept.name, dept.id)
+        dept_idx = edit_department.findData(common.get("department_id"))
+        if dept_idx >= 0:
+            edit_department.setCurrentIndex(dept_idx)
+
+        edit_activity = QComboBox()
+        edit_activity.addItems(["Assessment"])
+
+        edit_season = QComboBox()
+        edit_season.addItems(["Kharif", "Rabi"])
+        season_idx = edit_season.findText(common.get("season", ""))
+        if season_idx >= 0:
+            edit_season.setCurrentIndex(season_idx)
+
+        upper_form.addRow("Date*", edit_date)
+        upper_form.addRow("Title of OFT*", edit_title)
+        upper_form.addRow("Crop Variety*", edit_crop)
+        upper_form.addRow("No. of Farmers*", edit_count)
+        upper_form.addRow("Technical Assessment*", edit_technical)
+        upper_form.addRow("Area*", edit_area)
+        upper_form.addRow("Department*", edit_department)
+        upper_form.addRow("Activity Type*", edit_activity)
+        upper_form.addRow("Season*", edit_season)
+        content_layout.addWidget(upper_card)
+
+        farmers_title = QLabel("Farmer Details")
+        farmers_title.setObjectName("CardTitle")
+        content_layout.addWidget(farmers_title)
+
+        dialog_farmer_forms = []
+        for index, record in enumerate(batch_records):
+            farmer_card = QFrame()
+            farmer_card.setObjectName("Card")
+            farmer_layout = QFormLayout(farmer_card)
+            farmer_layout.setHorizontalSpacing(12)
+            farmer_layout.setVerticalSpacing(8)
+            farmer_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+            farmer_name = QLineEdit(record.get("farmer_name", ""))
+            farmer_village = QLineEdit(record.get("village", ""))
+            farmer_mobile = QLineEdit(record.get("contact_number", ""))
+            farmer_scientist = QLineEdit(record.get("oft_farmer_scientist", ""))
+            farmer_purpose = QComboBox()
+            farmer_purpose.addItems(["Visitor Entry", "Consultation"])
+            purpose_idx = farmer_purpose.findText(record.get("oft_farmer_purpose", ""))
+            if purpose_idx >= 0:
+                farmer_purpose.setCurrentIndex(purpose_idx)
+
+            farmer_district = QComboBox()
+            farmer_district.setEditable(True)
+            farmer_district.addItem("Select District", None)
+            for district_name in sorted(MH_DISTRICT_TEHSILS.keys()):
+                farmer_district.addItem(district_name, district_name)
+            self._configure_searchable_combo(farmer_district)
+            district_text = record.get("oft_farmer_district", "")
+            district_idx = farmer_district.findText(district_text)
+            if district_idx >= 0:
+                farmer_district.setCurrentIndex(district_idx)
+            elif district_text:
+                farmer_district.setEditText(district_text)
+
+            farmer_tehsil = QComboBox()
+            farmer_tehsil.setEditable(True)
+            farmer_tehsil.addItem("Select Tehsil", None)
+            self._configure_searchable_combo(farmer_tehsil)
+
+            def _refresh_edit_tehsils(_idx: int = -1, district_combo=farmer_district, tehsil_combo=farmer_tehsil, selected_text=record.get("oft_farmer_tehsil", "")) -> None:
+                district_value = district_combo.currentText().strip()
+                tehsil_combo.blockSignals(True)
+                tehsil_combo.clear()
+                tehsil_combo.addItem("Select Tehsil", None)
+                if self._is_valid_district(district_value):
+                    for tehsil_name in MH_DISTRICT_TEHSILS.get(district_value, []):
+                        tehsil_combo.addItem(tehsil_name, tehsil_name)
+                    tehsil_combo.setEnabled(True)
+                else:
+                    tehsil_combo.setEnabled(False)
+                if selected_text:
+                    text_idx = tehsil_combo.findText(selected_text)
+                    if text_idx >= 0:
+                        tehsil_combo.setCurrentIndex(text_idx)
+                    else:
+                        tehsil_combo.setEditText(selected_text)
+                else:
+                    tehsil_combo.setCurrentIndex(0)
+                tehsil_combo.blockSignals(False)
+
+            _refresh_edit_tehsils()
+            farmer_district.currentIndexChanged.connect(_refresh_edit_tehsils)
+
+            farmer_layout.addRow(f"Farmer {index + 1} Name*", farmer_name)
+            farmer_layout.addRow("Farmer Village*", farmer_village)
+            farmer_layout.addRow("Mobile No.*", farmer_mobile)
+            farmer_layout.addRow("Scientist*", farmer_scientist)
+            farmer_layout.addRow("Purpose*", farmer_purpose)
+            farmer_layout.addRow("District*", farmer_district)
+            farmer_layout.addRow("Tehsil*", farmer_tehsil)
+
+            dialog_farmer_forms.append(
+                {
+                    "farmer_name": farmer_name,
+                    "village": farmer_village,
+                    "mobile": farmer_mobile,
+                    "scientist": farmer_scientist,
+                    "purpose": farmer_purpose,
+                    "district": farmer_district,
+                    "tehsil": farmer_tehsil,
+                }
+            )
+            content_layout.addWidget(farmer_card)
+
+        content_layout.addStretch(1)
+        scroll.setWidget(content)
+        root.addWidget(scroll)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        root.addWidget(buttons)
+        buttons.rejected.connect(dialog.reject)
+
+        def _save_dialog_changes() -> None:
+            if not edit_title.text().strip() or not edit_crop.text().strip() or not edit_technical.toPlainText().strip() or not edit_area.text().strip():
+                QMessageBox.warning(dialog, "Validation", "Please fill all required OFT upper fields.")
+                return
+            if edit_department.currentData() is None:
+                QMessageBox.warning(dialog, "Validation", "Please select Department.")
+                return
+
+            try:
+                for index, form in enumerate(dialog_farmer_forms):
+                    farmer_name = form["farmer_name"].text().strip()
+                    village = form["village"].text().strip()
+                    mobile = form["mobile"].text().strip()
+                    scientist = form["scientist"].text().strip()
+                    purpose = form["purpose"].currentText().strip()
+                    district = form["district"].currentText().strip()
+                    tehsil = form["tehsil"].currentText().strip()
+
+                    if not farmer_name or not village or not scientist or not purpose:
+                        QMessageBox.warning(dialog, "Validation", f"Please fill all farmer fields in Farmer Form {index + 1}.")
+                        return
+                    if not mobile.isdigit() or len(mobile) < 10:
+                        QMessageBox.warning(dialog, "Validation", f"Enter valid mobile number in Farmer Form {index + 1}.")
+                        return
+                    if not self._is_valid_district(district) or not self._is_valid_tehsil(district, tehsil):
+                        QMessageBox.warning(dialog, "Validation", f"Select valid district/tehsil in Farmer Form {index + 1}.")
+                        return
+
+                    payload = {
+                        "module_type": self.module_name,
+                        "farmer_name": farmer_name,
+                        "village": village,
+                        "contact_number": mobile,
+                        "activity_date": edit_date.date().toPyDate(),
+                        "department_id": edit_department.currentData(),
+                        "season": edit_season.currentText().strip(),
+                        "activity_type": edit_activity.currentText().strip(),
+                        "description": edit_technical.toPlainText().strip(),
+                        "remarks": f"OFT_META|District: {district}|Tehsil: {tehsil}",
+                        "oft_title": edit_title.text().strip(),
+                        "oft_batch_key": batch_key,
+                        "oft_crop_variety": edit_crop.text().strip(),
+                        "oft_farmer_count": len(dialog_farmer_forms),
+                        "oft_technical_assessment": edit_technical.toPlainText().strip(),
+                        "oft_area": edit_area.text().strip(),
+                        "oft_farmer_scientist": scientist,
+                        "oft_farmer_purpose": purpose,
+                        "oft_farmer_district": district,
+                        "oft_farmer_tehsil": tehsil,
+                    }
+                    ActivityService.update_activity(activity_ids[index], payload, self.current_user.id)
+
+                QMessageBox.information(dialog, "Updated", "OFT batch updated successfully.")
+                dialog.accept()
+                self._reset_form()
+                self._load_table()
+            except Exception as exc:
+                QMessageBox.critical(dialog, "Error", f"Could not update OFT batch: {exc}")
+
+        buttons.accepted.connect(_save_dialog_changes)
+        dialog.exec_()
+
+    def _open_fld_edit_dialog(self) -> None:
+        if self.module_name != "Front Line Demonstrations (FLD)":
+            return
+        if not self.selected_activity_id:
+            QMessageBox.warning(self, "Selection", "Select an FLD row first.")
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Edit FLD Record")
+        dialog.resize(720, 560)
+
+        root = QVBoxLayout(dialog)
+        form = QFormLayout()
+        form.setHorizontalSpacing(12)
+        form.setVerticalSpacing(8)
+        form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+        edit_farmer_name = QLineEdit(self.farmer_name_input.text().strip())
+        edit_village = QComboBox()
+        edit_village.setEditable(True)
+        edit_village.setInsertPolicy(QComboBox.NoInsert)
+        edit_village.addItems(ActivityService.list_villages())
+        self._configure_searchable_combo(edit_village)
+        edit_village.setCurrentText(self.village_input.currentText().strip())
+
+        edit_contact = QLineEdit(self.contact_input.text().strip())
+        edit_date = QDateEdit()
+        edit_date.setCalendarPopup(True)
+        edit_date.setDate(self.date_input.date())
+
+        edit_department = QComboBox()
+        edit_department.addItem("Select Department", None)
+        for dept in self.departments:
+            edit_department.addItem(dept.name, dept.id)
+        dept_idx = edit_department.findData(self.department_combo.currentData())
+        if dept_idx >= 0:
+            edit_department.setCurrentIndex(dept_idx)
+
+        edit_season = QComboBox()
+        edit_season.addItems(["Kharif", "Rabi"])
+        season_idx = edit_season.findText(self.season_combo.currentText().strip())
+        if season_idx >= 0:
+            edit_season.setCurrentIndex(season_idx)
+
+        edit_description = QTextEdit(self.description_input.toPlainText().strip())
+        edit_description.setFixedHeight(90)
+        edit_remarks = QTextEdit(self.remarks_input.toPlainText().strip())
+        edit_remarks.setFixedHeight(90)
+
+        form.addRow("Farmer Name*", edit_farmer_name)
+        form.addRow("Village*", edit_village)
+        form.addRow("Contact Number*", edit_contact)
+        form.addRow("Date*", edit_date)
+        form.addRow("Department*", edit_department)
+        form.addRow("Season*", edit_season)
+        form.addRow("Description", edit_description)
+        form.addRow("Remarks", edit_remarks)
+        root.addLayout(form)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.rejected.connect(dialog.reject)
+        root.addWidget(buttons)
+
+        def _save_fld_dialog_changes() -> None:
+            farmer_name = edit_farmer_name.text().strip()
+            village = edit_village.currentText().strip()
+            contact = edit_contact.text().strip()
+            department_id = edit_department.currentData()
+            season = edit_season.currentText().strip()
+            description = edit_description.toPlainText().strip()
+            remarks = edit_remarks.toPlainText().strip()
+
+            if not farmer_name or not village or not contact:
+                QMessageBox.warning(dialog, "Validation", "Please fill all required fields marked with *.")
+                return
+            if not contact.isdigit() or len(contact) < 10:
+                QMessageBox.warning(dialog, "Validation", "Contact number must be numeric and at least 10 digits.")
+                return
+            if department_id is None:
+                QMessageBox.warning(dialog, "Validation", "Please select Department.")
+                return
+
+            department_name = edit_department.currentText().strip()
+            if department_name != "Horticulture":
+                season = "Kharif"
+
+            payload = {
+                "module_type": self.module_name,
+                "farmer_name": farmer_name,
+                "village": village,
+                "contact_number": contact,
+                "activity_date": edit_date.date().toPyDate(),
+                "department_id": department_id,
+                "season": season,
+                "activity_type": "FLD Entry",
+                "description": description,
+                "remarks": remarks,
+            }
+
+            try:
+                ActivityService.update_activity(self.selected_activity_id, payload, self.current_user.id)
+                QMessageBox.information(dialog, "Updated", "FLD record updated successfully.")
+                dialog.accept()
+                self._reset_form()
+                self._load_table()
+            except Exception as exc:
+                QMessageBox.critical(dialog, "Error", f"Could not update FLD record: {exc}")
+
+        buttons.accepted.connect(_save_fld_dialog_changes)
+        dialog.exec_()
+
+    def _edit_oft_batch_records(self) -> None:
+        common_payload = self._collect_oft_common_payload()
+        if common_payload is None:
+            return
+
+        if not self.oft_selected_activity_ids:
+            QMessageBox.warning(self, "Selection", "No OFT batch selected for edit.")
+            return
+
+        if len(self.oft_farmer_forms) != len(self.oft_selected_activity_ids):
+            QMessageBox.warning(self, "Validation", "Farmer form count does not match saved OFT batch.")
+            return
+
+        unsaved_forms = [form_state for form_state in self.oft_farmer_forms if not form_state.get("saved")]
+        if unsaved_forms:
+            first_unsaved = unsaved_forms[0]["index"] + 1
+            QMessageBox.warning(self, "Validation", f"Save Farmer Form {first_unsaved} before editing all records.")
+            return
+
+        try:
+            for idx, form_state in enumerate(self.oft_farmer_forms):
+                district_value = form_state["district"].currentText().strip()
+                tehsil_value = form_state["tehsil"].currentText().strip()
+                village_value = form_state["village"].currentText().strip()
+                scientist_value = form_state["scientist"].text().strip()
+                purpose_value = form_state["purpose"].currentText().strip()
+
+                payload = {
+                    "module_type": self.module_name,
+                    "farmer_name": form_state["farmer_name"].text().strip(),
+                    "village": village_value,
+                    "contact_number": form_state["mobile"].text().strip(),
+                    "activity_date": common_payload["activity_date"],
+                    "department_id": common_payload["department_id"],
+                    "season": common_payload["season"],
+                    "activity_type": common_payload["activity_type"],
+                    "description": common_payload["description"],
+                    "remarks": f"OFT_META|District: {district_value}|Tehsil: {tehsil_value}",
+                    "oft_title": common_payload["farmer_name"],
+                    "oft_batch_key": self.oft_selected_batch_key,
+                    "oft_crop_variety": common_payload["village"],
+                    "oft_farmer_count": int(common_payload["contact_number"]),
+                    "oft_technical_assessment": common_payload["description"],
+                    "oft_area": common_payload["remarks"],
+                    "oft_farmer_scientist": scientist_value,
+                    "oft_farmer_purpose": purpose_value,
+                    "oft_farmer_district": district_value,
+                    "oft_farmer_tehsil": tehsil_value,
+                }
+                ActivityService.update_activity(self.oft_selected_activity_ids[idx], payload, self.current_user.id)
+
+            QMessageBox.information(self, "Updated", "All OFT farmer records updated successfully.")
+            self._reset_form()
+            self._load_table()
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", f"Could not update OFT records: {exc}")
+
     def _delete_record(self) -> None:
         if not self.selected_activity_id:
             QMessageBox.warning(self, "Selection", "Select a row to delete.")
             return
 
-        confirm = QMessageBox.question(self, "Confirm Delete", "Delete selected record?")
+        if self.module_name == "On Farm Testing (OFT)" and self.oft_selected_activity_ids:
+            confirm = QMessageBox.question(
+                self,
+                "Confirm Delete",
+                f"Delete selected OFT batch ({len(self.oft_selected_activity_ids)} farmer records)?",
+            )
+        else:
+            confirm = QMessageBox.question(self, "Confirm Delete", "Delete selected record?")
         if confirm != QMessageBox.Yes:
             return
 
         try:
-            ActivityService.delete_activity(self.selected_activity_id, self.current_user.id)
-            QMessageBox.information(self, "Deleted", "Record deleted successfully.")
+            if self.module_name == "On Farm Testing (OFT)" and self.oft_selected_activity_ids:
+                for activity_id in self.oft_selected_activity_ids:
+                    ActivityService.delete_activity(activity_id, self.current_user.id)
+                QMessageBox.information(self, "Deleted", "Selected OFT batch deleted successfully.")
+            else:
+                ActivityService.delete_activity(self.selected_activity_id, self.current_user.id)
+                QMessageBox.information(self, "Deleted", "Record deleted successfully.")
             self._reset_form()
             self._load_table()
         except Exception as exc:
@@ -1061,6 +1696,16 @@ class ActivityFormWidget(QWidget):
 
     def _reset_form(self) -> None:
         self.selected_activity_id = None
+        self.oft_selected_activity_ids = []
+        self.oft_selected_batch_key = ""
+        if hasattr(self, "oft_table_edit_btn"):
+            self.oft_table_edit_btn.setEnabled(False)
+        if hasattr(self, "oft_table_delete_btn"):
+            self.oft_table_delete_btn.setEnabled(False)
+        if hasattr(self, "fld_table_edit_btn") and self.fld_table_edit_btn is not None:
+            self.fld_table_edit_btn.setEnabled(False)
+        if hasattr(self, "fld_table_delete_btn") and self.fld_table_delete_btn is not None:
+            self.fld_table_delete_btn.setEnabled(False)
         self.farmer_name_input.clear()
         self.contact_input.clear()
         self.date_input.setDate(QDate.currentDate())
@@ -1080,6 +1725,7 @@ class ActivityFormWidget(QWidget):
             self.contact_input.clear()
             self.description_input.clear()
             self.remarks_input.clear()
+            self.oft_farmer_forms = []
             self.oft_boxes_visible = False
             if hasattr(self, "oft_farmer_boxes_card"):
                 while self.oft_farmer_boxes_layout.count():
@@ -1089,6 +1735,7 @@ class ActivityFormWidget(QWidget):
                         widget.deleteLater()
                 self.oft_farmer_boxes_card.hide()
                 self.oft_boxes_scroll.hide()
+            self._update_oft_saved_summary()
         else:
             self.description_input.clear()
             self.remarks_input.clear()
@@ -1141,7 +1788,16 @@ class ActivityFormWidget(QWidget):
         self._load_table()
 
     def _on_row_selected(self, row: int, _column: int) -> None:
+        row_data = self._table_row_records[row] if row < len(self._table_row_records) else None
         self.selected_activity_id = int(self.table.item(row, 0).text())
+        if hasattr(self, "oft_table_edit_btn"):
+            self.oft_table_edit_btn.setEnabled(True)
+        if hasattr(self, "oft_table_delete_btn"):
+            self.oft_table_delete_btn.setEnabled(True)
+        if hasattr(self, "fld_table_edit_btn") and self.fld_table_edit_btn is not None:
+            self.fld_table_edit_btn.setEnabled(True)
+        if hasattr(self, "fld_table_delete_btn") and self.fld_table_delete_btn is not None:
+            self.fld_table_delete_btn.setEnabled(True)
         self.farmer_name_input.setText(self.table.item(row, 1).text())
         village_value = self.table.item(row, 2).text().strip()
         if self.module_name != "On Farm Testing (OFT)":
@@ -1184,23 +1840,82 @@ class ActivityFormWidget(QWidget):
                 self.tehsil_input.setCurrentIndex(tehsil_idx)
             self._refresh_village_options(selected_village=village_value)
         elif self.module_name == "On Farm Testing (OFT)":
-            self.date_input.setDate(QDate.fromString(self.table.item(row, 1).text(), "yyyy-MM-dd"))
+            oft_batch_key = (row_data or {}).get("oft_batch_key", "").strip() if row_data else ""
+            batch_records = ActivityService.fetch_oft_batch_records(self.selected_activity_id, oft_batch_key)
+            if not batch_records:
+                batch_records = [row_data] if row_data else []
 
-            self.farmer_name_input.setText(self.table.item(row, 2).text())
-            self.village_input.setText(self.table.item(row, 3).text())
-            self.contact_input.setText(self.table.item(row, 4).text())
-            self.description_input.setText(self.table.item(row, 5).text())
-            self.remarks_input.setText(self.table.item(row, 6).text())
+            if not batch_records:
+                QMessageBox.warning(self, "Selection", "Could not load OFT farmer records.")
+                return
 
-            activity_type = self.table.item(row, 8).text()
+            common = batch_records[0]
+            self.oft_selected_activity_ids = [record["id"] for record in batch_records]
+            self.oft_selected_batch_key = common.get("oft_batch_key", "")
+
+            date_value = common.get("activity_date")
+            if date_value:
+                self.date_input.setDate(QDate(date_value.year, date_value.month, date_value.day))
+
+            self.farmer_name_input.setText(common.get("oft_title", ""))
+            self.village_input.setText(common.get("oft_crop_variety", ""))
+            self.contact_input.setText(str(common.get("oft_farmer_count") or len(batch_records)))
+            self.description_input.setText(common.get("oft_technical_assessment", ""))
+            self.remarks_input.setText(common.get("oft_area", ""))
+
+            activity_type = common.get("activity_type", "")
             type_idx = self.activity_type_input.findText(activity_type)
             if type_idx >= 0:
                 self.activity_type_input.setCurrentIndex(type_idx)
 
-            season = self.table.item(row, 9).text()
+            season = common.get("season", "")
             season_idx = self.season_combo.findText(season)
             if season_idx >= 0:
                 self.season_combo.setCurrentIndex(season_idx)
+
+            self._show_oft_farmer_boxes()
+
+            for idx, record in enumerate(batch_records):
+                if idx >= len(self.oft_farmer_forms):
+                    break
+                form_state = self.oft_farmer_forms[idx]
+                form_state["farmer_name"].setText(record.get("farmer_name", ""))
+                form_state["mobile"].setText(record.get("contact_number", ""))
+                form_state["scientist"].setText(record.get("oft_farmer_scientist", ""))
+
+                purpose_text = record.get("oft_farmer_purpose", "")
+                purpose_idx = form_state["purpose"].findText(purpose_text)
+                if purpose_idx >= 0:
+                    form_state["purpose"].setCurrentIndex(purpose_idx)
+                elif purpose_text:
+                    form_state["purpose"].setCurrentText(purpose_text)
+
+                district_text = record.get("oft_farmer_district", "")
+                district_idx = form_state["district"].findText(district_text)
+                if district_idx >= 0:
+                    form_state["district"].setCurrentIndex(district_idx)
+                elif district_text:
+                    form_state["district"].setEditText(district_text)
+
+                tehsil_text = record.get("oft_farmer_tehsil", "")
+                tehsil_idx = form_state["tehsil"].findText(tehsil_text)
+                if tehsil_idx >= 0:
+                    form_state["tehsil"].setCurrentIndex(tehsil_idx)
+                elif tehsil_text:
+                    form_state["tehsil"].setEditText(tehsil_text)
+
+                village_text = record.get("village", "")
+                village_idx = form_state["village"].findText(village_text)
+                if village_idx >= 0:
+                    form_state["village"].setCurrentIndex(village_idx)
+                elif village_text:
+                    form_state["village"].setEditText(village_text)
+
+                form_state["saved"] = True
+                form_state["state_label"].setText("Saved")
+                form_state["save_btn"].setText("Saved")
+
+            self._update_oft_saved_summary()
         else:
             # For other modules: Season is at column 6, Activity at column 7
             activity_type = self.table.item(row, 7).text()
@@ -1409,6 +2124,7 @@ class ActivityFormWidget(QWidget):
             filters=self._current_filters(),
         )
         self.total_records = total
+        self._table_row_records = records
 
         self.table.setRowCount(0)
         for row_idx, row_data in enumerate(records):
@@ -1436,11 +2152,18 @@ class ActivityFormWidget(QWidget):
                 values = [
                     row_data["id"],
                     str(row_data["activity_date"]),
+                    self._format_optional_text_for_display(row_data.get("oft_title", "")),
+                    self._format_optional_text_for_display(row_data.get("oft_crop_variety", "")),
+                    self._format_optional_text_for_display(row_data.get("oft_farmer_count", "")),
                     self._format_optional_text_for_display(row_data["farmer_name"]),
                     self._format_optional_text_for_display(row_data["village"]),
                     self._format_optional_text_for_display(row_data["contact_number"]),
-                    self._format_optional_text_for_display(row_data["description"]),
-                    self._format_optional_text_for_display(row_data["remarks"]),
+                    self._format_optional_text_for_display(row_data.get("oft_farmer_scientist", "")),
+                    self._format_optional_text_for_display(row_data.get("oft_farmer_purpose", "")),
+                    self._format_optional_text_for_display(row_data.get("oft_farmer_district", "")),
+                    self._format_optional_text_for_display(row_data.get("oft_farmer_tehsil", "")),
+                    self._format_optional_text_for_display(row_data.get("oft_technical_assessment", "")),
+                    self._format_optional_text_for_display(row_data.get("oft_area", "")),
                     self._format_optional_text_for_display(row_data["department"]),
                     display_activity,
                     display_season,
