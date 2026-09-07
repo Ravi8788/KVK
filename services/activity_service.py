@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 
 from database.session import SessionLocal
 from models.entities import Activity, Department, Farmer
@@ -72,17 +72,20 @@ class ActivityService:
         session = SessionLocal()
         try:
             rows = (
-                session.query(Farmer.village, Activity.remarks)
+                session.query(Farmer.village, Activity.visitor_district, Activity.visitor_tehsil, Activity.remarks)
                 .join(Activity, Activity.farmer_id == Farmer.id)
                 .filter(Activity.module_type == "Visitor Farmers")
                 .all()
             )
 
             matched = set()
-            for village, remarks in rows:
+            for village, stored_district, stored_tehsil, remarks in rows:
                 if not (village or "").strip():
                     continue
-                row_district, row_tehsil = ActivityService._extract_district_tehsil(remarks)
+                row_district = (stored_district or "").strip()
+                row_tehsil = (stored_tehsil or "").strip()
+                if not row_district or not row_tehsil:
+                    row_district, row_tehsil = ActivityService._extract_district_tehsil(remarks)
                 if row_district == district and row_tehsil == tehsil:
                     matched.add(village.strip())
 
@@ -111,7 +114,7 @@ class ActivityService:
         return district_value, tehsil_value
 
     @staticmethod
-    def list_villages_for_oft(district: str, tehsil: str) -> List[str]:
+    def list_villages_for_oft(district: str, tehsil: str, module_type: str = "") -> List[str]:
         district = (district or "").strip()
         tehsil = (tehsil or "").strip()
         if not district or not tehsil:
@@ -119,18 +122,22 @@ class ActivityService:
 
         session = SessionLocal()
         try:
+            module_filter = [module_type] if module_type else ["On Farm Testing (OFT)", "Front Line Demonstrations (FLD)"]
             rows = (
-                session.query(Farmer.village, Activity.remarks)
+                session.query(Farmer.village, Activity.oft_farmer_district, Activity.oft_farmer_tehsil, Activity.remarks)
                 .join(Activity, Activity.farmer_id == Farmer.id)
-                .filter(Activity.module_type == "On Farm Testing (OFT)")
+                .filter(Activity.module_type.in_(module_filter))
                 .all()
             )
 
             matched = set()
-            for village, remarks in rows:
+            for village, stored_district, stored_tehsil, remarks in rows:
                 if not (village or "").strip():
                     continue
-                row_district, row_tehsil = ActivityService._extract_oft_district_tehsil(remarks)
+                row_district = (stored_district or "").strip()
+                row_tehsil = (stored_tehsil or "").strip()
+                if not row_district or not row_tehsil:
+                    row_district, row_tehsil = ActivityService._extract_oft_district_tehsil(remarks)
                 if row_district == district and row_tehsil == tehsil:
                     matched.add(village.strip())
 
@@ -139,14 +146,42 @@ class ActivityService:
             session.close()
 
     @staticmethod
+    def list_villages_for_training(district: str, tehsil: str, module_type: str = "") -> List[str]:
+        district = (district or "").strip()
+        tehsil = (tehsil or "").strip()
+        if not district or not tehsil:
+            return []
+
+        session = SessionLocal()
+        try:
+            module_filter = [module_type] if module_type else ["Training Programmes", "Vocational Training Programmes"]
+            rows = (
+                session.query(Farmer.village)
+                .join(Activity, Activity.farmer_id == Farmer.id)
+                .filter(
+                    Activity.module_type.in_(module_filter),
+                    Activity.training_farmer_district == district,
+                    Activity.training_farmer_tehsil == tehsil,
+                )
+                .all()
+            )
+            return sorted({(village or "").strip() for (village,) in rows if (village or "").strip()})
+        finally:
+            session.close()
+
+    @staticmethod
     def _get_or_create_farmer(session, farmer_name: str, village: str, contact_number: str) -> Farmer:
+        contact_number = contact_number.strip()
+        if not contact_number.isdigit() or len(contact_number) != 10:
+            raise ValueError("Mobile number must be exactly 10 digits.")
+
         farmer = (
             session.query(Farmer)
             .filter(
                 and_(
                     Farmer.farmer_name == farmer_name.strip(),
                     Farmer.village == village.strip(),
-                    Farmer.contact_number == contact_number.strip(),
+                    Farmer.contact_number == contact_number,
                 )
             )
             .first()
@@ -157,7 +192,7 @@ class ActivityService:
         farmer = Farmer(
             farmer_name=farmer_name.strip(),
             village=village.strip(),
-            contact_number=contact_number.strip(),
+            contact_number=contact_number,
         )
         session.add(farmer)
         session.flush()
@@ -183,6 +218,9 @@ class ActivityService:
                 activity_date=payload["activity_date"],
                 description=payload.get("description"),
                 remarks=payload.get("remarks"),
+                visitor_scientist=payload.get("visitor_scientist"),
+                visitor_district=payload.get("visitor_district"),
+                visitor_tehsil=payload.get("visitor_tehsil"),
                 oft_title=payload.get("oft_title"),
                 oft_batch_key=payload.get("oft_batch_key"),
                 oft_crop_variety=payload.get("oft_crop_variety"),
@@ -193,6 +231,29 @@ class ActivityService:
                 oft_farmer_purpose=payload.get("oft_farmer_purpose"),
                 oft_farmer_district=payload.get("oft_farmer_district"),
                 oft_farmer_tehsil=payload.get("oft_farmer_tehsil"),
+                oft_farmer_category=payload.get("oft_farmer_category"),
+                training_title=payload.get("training_title"),
+                training_type=payload.get("training_type"),
+                training_end_date=payload.get("training_end_date"),
+                clientele=payload.get("clientele"),
+                thematic_area=payload.get("thematic_area"),
+                venue=payload.get("venue"),
+                venue_is_offline=payload.get("venue_is_offline"),
+                venue_village=payload.get("venue_village"),
+                venue_taluka=payload.get("venue_taluka"),
+                venue_district=payload.get("venue_district"),
+                training_farmer_count=payload.get("training_farmer_count"),
+                training_farmer_category=payload.get("training_farmer_category"),
+                training_farmer_scientist=payload.get("training_farmer_scientist"),
+                training_farmer_purpose=payload.get("training_farmer_purpose"),
+                training_farmer_district=payload.get("training_farmer_district"),
+                training_farmer_tehsil=payload.get("training_farmer_tehsil"),
+                extension_venue=payload.get("extension_venue"),
+                extension_location=payload.get("extension_location"),
+                extension_department=payload.get("extension_department"),
+                extension_purpose=payload.get("extension_purpose"),
+                extension_farmer_count=payload.get("extension_farmer_count"),
+                other_extension_title=payload.get("other_extension_title"),
                 created_by=current_user_id,
             )
             session.add(activity)
@@ -235,6 +296,9 @@ class ActivityService:
             activity.activity_date = payload["activity_date"]
             activity.description = payload.get("description")
             activity.remarks = payload.get("remarks")
+            activity.visitor_scientist = payload.get("visitor_scientist")
+            activity.visitor_district = payload.get("visitor_district")
+            activity.visitor_tehsil = payload.get("visitor_tehsil")
             activity.oft_title = payload.get("oft_title")
             activity.oft_batch_key = payload.get("oft_batch_key")
             activity.oft_crop_variety = payload.get("oft_crop_variety")
@@ -245,6 +309,29 @@ class ActivityService:
             activity.oft_farmer_purpose = payload.get("oft_farmer_purpose")
             activity.oft_farmer_district = payload.get("oft_farmer_district")
             activity.oft_farmer_tehsil = payload.get("oft_farmer_tehsil")
+            activity.oft_farmer_category = payload.get("oft_farmer_category")
+            activity.training_title = payload.get("training_title")
+            activity.training_type = payload.get("training_type")
+            activity.training_end_date = payload.get("training_end_date")
+            activity.clientele = payload.get("clientele")
+            activity.thematic_area = payload.get("thematic_area")
+            activity.venue = payload.get("venue")
+            activity.venue_is_offline = payload.get("venue_is_offline")
+            activity.venue_village = payload.get("venue_village")
+            activity.venue_taluka = payload.get("venue_taluka")
+            activity.venue_district = payload.get("venue_district")
+            activity.training_farmer_count = payload.get("training_farmer_count")
+            activity.training_farmer_category = payload.get("training_farmer_category")
+            activity.training_farmer_scientist = payload.get("training_farmer_scientist")
+            activity.training_farmer_purpose = payload.get("training_farmer_purpose")
+            activity.training_farmer_district = payload.get("training_farmer_district")
+            activity.training_farmer_tehsil = payload.get("training_farmer_tehsil")
+            activity.extension_venue = payload.get("extension_venue")
+            activity.extension_location = payload.get("extension_location")
+            activity.extension_department = payload.get("extension_department")
+            activity.extension_purpose = payload.get("extension_purpose")
+            activity.extension_farmer_count = payload.get("extension_farmer_count")
+            activity.other_extension_title = payload.get("other_extension_title")
             session.commit()
 
             AuditService.log_action(
@@ -318,6 +405,35 @@ class ActivityService:
                             Activity.activity_type.ilike(like_pattern),
                             Activity.description.ilike(like_pattern),
                             Activity.remarks.ilike(like_pattern),
+                            Activity.visitor_scientist.ilike(like_pattern),
+                            Activity.visitor_district.ilike(like_pattern),
+                            Activity.visitor_tehsil.ilike(like_pattern),
+                            Activity.oft_title.ilike(like_pattern),
+                            Activity.oft_crop_variety.ilike(like_pattern),
+                            Activity.oft_technical_assessment.ilike(like_pattern),
+                            Activity.oft_area.ilike(like_pattern),
+                            Activity.oft_farmer_scientist.ilike(like_pattern),
+                            Activity.oft_farmer_purpose.ilike(like_pattern),
+                            Activity.oft_farmer_district.ilike(like_pattern),
+                            Activity.oft_farmer_tehsil.ilike(like_pattern),
+                            Activity.oft_farmer_category.ilike(like_pattern),
+                            Activity.training_title.ilike(like_pattern),
+                            Activity.training_type.ilike(like_pattern),
+                            Activity.clientele.ilike(like_pattern),
+                            Activity.venue.ilike(like_pattern),
+                            Activity.venue_village.ilike(like_pattern),
+                            Activity.venue_taluka.ilike(like_pattern),
+                            Activity.venue_district.ilike(like_pattern),
+                            Activity.training_farmer_category.ilike(like_pattern),
+                            Activity.training_farmer_scientist.ilike(like_pattern),
+                            Activity.training_farmer_purpose.ilike(like_pattern),
+                            Activity.training_farmer_district.ilike(like_pattern),
+                            Activity.training_farmer_tehsil.ilike(like_pattern),
+                            Activity.extension_venue.ilike(like_pattern),
+                            Activity.extension_location.ilike(like_pattern),
+                            Activity.extension_department.ilike(like_pattern),
+                            Activity.extension_purpose.ilike(like_pattern),
+                            Activity.other_extension_title.ilike(like_pattern),
                         )
                     )
 
@@ -328,10 +444,11 @@ class ActivityService:
                     base_query = base_query.filter(Activity.season == season)
 
                 if start_date:
-                    base_query = base_query.filter(Activity.activity_date >= start_date)
-
-                if end_date:
-                    base_query = base_query.filter(Activity.activity_date <= end_date)
+                    date_match = or_(
+                        and_(Activity.activity_date >= start_date, Activity.activity_date <= end_date),
+                        and_(func.date(Activity.created_at) >= start_date, func.date(Activity.created_at) <= end_date),
+                    )
+                    base_query = base_query.filter(date_match)
 
             total = base_query.count()
             rows = (
@@ -344,7 +461,12 @@ class ActivityService:
 
             records: List[Dict] = []
             for activity, farmer, department in rows:
-                is_oft = activity.module_type == "On Farm Testing (OFT)"
+                visitor_district = activity.visitor_district or ""
+                visitor_tehsil = activity.visitor_tehsil or ""
+                if activity.module_type == "Visitor Farmers" and (not visitor_district or not visitor_tehsil):
+                    parsed_district, parsed_tehsil = ActivityService._extract_district_tehsil(activity.remarks)
+                    visitor_district = visitor_district or parsed_district
+                    visitor_tehsil = visitor_tehsil or parsed_tehsil
                 records.append(
                     {
                         "id": activity.id,
@@ -358,6 +480,11 @@ class ActivityService:
                         "activity_type": activity.activity_type,
                         "description": activity.description or "",
                         "remarks": activity.remarks or "",
+                        "visitor_scientist": activity.visitor_scientist or "",
+                        "visitor_district": visitor_district,
+                        "visitor_tehsil": visitor_tehsil,
+                        "district": visitor_district,
+                        "tehsil": visitor_tehsil,
                         "oft_title": activity.oft_title or "",
                         "oft_batch_key": activity.oft_batch_key or "",
                         "oft_crop_variety": activity.oft_crop_variety or "",
@@ -368,6 +495,29 @@ class ActivityService:
                         "oft_farmer_purpose": activity.oft_farmer_purpose or "",
                         "oft_farmer_district": activity.oft_farmer_district or "",
                         "oft_farmer_tehsil": activity.oft_farmer_tehsil or "",
+                        "oft_farmer_category": activity.oft_farmer_category or "",
+                        "training_title": activity.training_title or "",
+                        "training_type": activity.training_type or "",
+                        "training_end_date": activity.training_end_date,
+                        "clientele": activity.clientele or "",
+                        "thematic_area": activity.thematic_area or "",
+                        "venue": activity.venue or "",
+                        "venue_is_offline": activity.venue_is_offline,
+                        "venue_village": activity.venue_village or "",
+                        "venue_taluka": activity.venue_taluka or "",
+                        "venue_district": activity.venue_district or "",
+                        "training_farmer_count": activity.training_farmer_count,
+                        "training_farmer_category": activity.training_farmer_category or "",
+                        "training_farmer_scientist": activity.training_farmer_scientist or "",
+                        "training_farmer_purpose": activity.training_farmer_purpose or "",
+                        "training_farmer_district": activity.training_farmer_district or "",
+                        "training_farmer_tehsil": activity.training_farmer_tehsil or "",
+                        "extension_venue": activity.extension_venue or "",
+                        "extension_location": activity.extension_location or "",
+                        "extension_department": activity.extension_department or "",
+                        "extension_purpose": activity.extension_purpose or "",
+                        "extension_farmer_count": activity.extension_farmer_count,
+                        "other_extension_title": activity.other_extension_title or "",
                     }
                 )
             return records, total
@@ -379,12 +529,19 @@ class ActivityService:
         session = SessionLocal()
         try:
             if batch_key:
+                anchor = session.query(Activity).filter(Activity.id == activity_id).first()
+                module_type = anchor.module_type if anchor is not None else None
+                module_condition = (
+                    Activity.module_type == module_type
+                    if module_type
+                    else Activity.module_type.in_(["On Farm Testing (OFT)", "Front Line Demonstrations (FLD)"])
+                )
                 rows = (
                     session.query(Activity, Farmer, Department)
                     .join(Farmer, Activity.farmer_id == Farmer.id)
                     .join(Department, Activity.department_id == Department.id)
                     .filter(
-                        Activity.module_type == "On Farm Testing (OFT)",
+                        module_condition,
                         Activity.oft_batch_key == batch_key,
                     )
                     .order_by(Activity.id.asc())
@@ -401,6 +558,12 @@ class ActivityService:
 
             records: List[Dict] = []
             for activity, farmer, department in rows:
+                visitor_district = activity.visitor_district or ""
+                visitor_tehsil = activity.visitor_tehsil or ""
+                if activity.module_type == "Visitor Farmers" and (not visitor_district or not visitor_tehsil):
+                    parsed_district, parsed_tehsil = ActivityService._extract_district_tehsil(activity.remarks)
+                    visitor_district = visitor_district or parsed_district
+                    visitor_tehsil = visitor_tehsil or parsed_tehsil
                 records.append(
                     {
                         "id": activity.id,
@@ -414,6 +577,11 @@ class ActivityService:
                         "activity_type": activity.activity_type,
                         "description": activity.description or "",
                         "remarks": activity.remarks or "",
+                        "visitor_scientist": activity.visitor_scientist or "",
+                        "visitor_district": visitor_district,
+                        "visitor_tehsil": visitor_tehsil,
+                        "district": visitor_district,
+                        "tehsil": visitor_tehsil,
                         "oft_title": activity.oft_title or "",
                         "oft_batch_key": activity.oft_batch_key or "",
                         "oft_crop_variety": activity.oft_crop_variety or "",
@@ -424,6 +592,7 @@ class ActivityService:
                         "oft_farmer_purpose": activity.oft_farmer_purpose or "",
                         "oft_farmer_district": activity.oft_farmer_district or "",
                         "oft_farmer_tehsil": activity.oft_farmer_tehsil or "",
+                        "oft_farmer_category": activity.oft_farmer_category or "",
                     }
                 )
             return records

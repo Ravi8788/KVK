@@ -79,6 +79,33 @@ QLabel#CardTitle {
     color: #225d36;
 }
 
+QLabel#AnalyticsValue {
+    color: #1a6f34;
+    font-size: 24px;
+    font-weight: 700;
+}
+
+QLabel#AnalyticsStatus {
+    color: #5b705f;
+    padding: 4px 8px;
+}
+
+QTableWidget {
+    background: #ffffff;
+    alternate-background-color: #f2f8f2;
+    gridline-color: #dcebdc;
+    border: 1px solid #dcebdc;
+}
+
+QHeaderView::section {
+    background: #e9f6ea;
+    color: #225d36;
+    border: 0;
+    border-bottom: 1px solid #c8e5cc;
+    padding: 7px;
+    font-weight: 600;
+}
+
 QFrame#Card {
     background-color: #ffffff;
     border: 1px solid #dcebdc;

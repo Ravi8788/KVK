@@ -55,6 +55,9 @@ class Activity(Base):
     activity_date: Mapped[date] = mapped_column(Date, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     remarks: Mapped[Optional[str]] = mapped_column(Text)
+    visitor_scientist: Mapped[Optional[str]] = mapped_column(String(150))
+    visitor_district: Mapped[Optional[str]] = mapped_column(String(100))
+    visitor_tehsil: Mapped[Optional[str]] = mapped_column(String(100))
     oft_title: Mapped[Optional[str]] = mapped_column(String(255))
     oft_batch_key: Mapped[Optional[str]] = mapped_column(String(64))
     oft_crop_variety: Mapped[Optional[str]] = mapped_column(String(255))
@@ -65,6 +68,29 @@ class Activity(Base):
     oft_farmer_purpose: Mapped[Optional[str]] = mapped_column(String(100))
     oft_farmer_district: Mapped[Optional[str]] = mapped_column(String(100))
     oft_farmer_tehsil: Mapped[Optional[str]] = mapped_column(String(100))
+    oft_farmer_category: Mapped[Optional[str]] = mapped_column(String(50))
+    training_title: Mapped[Optional[str]] = mapped_column(String(255))
+    training_type: Mapped[Optional[str]] = mapped_column(String(50))
+    training_end_date: Mapped[Optional[date]] = mapped_column(Date)
+    clientele: Mapped[Optional[str]] = mapped_column(String(10))
+    thematic_area: Mapped[Optional[str]] = mapped_column(String(255))
+    venue: Mapped[Optional[str]] = mapped_column(String(255))
+    venue_is_offline: Mapped[Optional[bool]] = mapped_column(Boolean)
+    venue_village: Mapped[Optional[str]] = mapped_column(String(150))
+    venue_taluka: Mapped[Optional[str]] = mapped_column(String(150))
+    venue_district: Mapped[Optional[str]] = mapped_column(String(150))
+    training_farmer_count: Mapped[Optional[int]] = mapped_column(Integer)
+    training_farmer_category: Mapped[Optional[str]] = mapped_column(String(50))
+    training_farmer_scientist: Mapped[Optional[str]] = mapped_column(String(150))
+    training_farmer_purpose: Mapped[Optional[str]] = mapped_column(String(100))
+    training_farmer_district: Mapped[Optional[str]] = mapped_column(String(100))
+    training_farmer_tehsil: Mapped[Optional[str]] = mapped_column(String(100))
+    extension_venue: Mapped[Optional[str]] = mapped_column(String(255))
+    extension_location: Mapped[Optional[str]] = mapped_column(String(255))
+    extension_department: Mapped[Optional[str]] = mapped_column(String(150))
+    extension_purpose: Mapped[Optional[str]] = mapped_column(Text)
+    extension_farmer_count: Mapped[Optional[int]] = mapped_column(Integer)
+    other_extension_title: Mapped[Optional[str]] = mapped_column(String(255))
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -75,6 +101,7 @@ class Activity(Base):
 
     __table_args__ = (
         CheckConstraint("season IN ('Kharif', 'Rabi')", name="chk_activity_season"),
+        CheckConstraint("clientele IS NULL OR clientele IN ('PF', 'RY', 'EF')", name="chk_activity_clientele"),
         Index("idx_activities_date", "activity_date"),
         Index("idx_activities_department", "department_id"),
         Index("idx_activities_module", "module_type"),

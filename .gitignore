@@ -25,6 +25,7 @@ dist/
 
 # Reports and exports generated at runtime
 kvk_report_*.csv
+kvk_pivot.pdf
 reports/test_export.csv
 
 # OS/editor noise

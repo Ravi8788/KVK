@@ -23,8 +23,11 @@ def create_tables() -> None:
 
 
 def _ensure_oft_activity_columns() -> None:
-    """Adds newer OFT columns to existing databases without destructive migrations."""
+    """Adds newer activity columns to existing databases without destructive migrations."""
     statements = [
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS visitor_scientist VARCHAR(150)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS visitor_district VARCHAR(100)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS visitor_tehsil VARCHAR(100)",
         "ALTER TABLE activities ADD COLUMN IF NOT EXISTS oft_title VARCHAR(255)",
         "ALTER TABLE activities ADD COLUMN IF NOT EXISTS oft_batch_key VARCHAR(64)",
         "ALTER TABLE activities ADD COLUMN IF NOT EXISTS oft_crop_variety VARCHAR(255)",
@@ -35,6 +38,61 @@ def _ensure_oft_activity_columns() -> None:
         "ALTER TABLE activities ADD COLUMN IF NOT EXISTS oft_farmer_purpose VARCHAR(100)",
         "ALTER TABLE activities ADD COLUMN IF NOT EXISTS oft_farmer_district VARCHAR(100)",
         "ALTER TABLE activities ADD COLUMN IF NOT EXISTS oft_farmer_tehsil VARCHAR(100)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS oft_farmer_category VARCHAR(50)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS training_title VARCHAR(255)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS training_type VARCHAR(50)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS training_end_date DATE",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS clientele VARCHAR(10)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS thematic_area VARCHAR(255)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS venue VARCHAR(255)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS venue_is_offline BOOLEAN",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS venue_village VARCHAR(150)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS venue_taluka VARCHAR(150)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS venue_district VARCHAR(150)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS training_farmer_count INTEGER",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS training_farmer_category VARCHAR(50)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS training_farmer_scientist VARCHAR(150)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS training_farmer_purpose VARCHAR(100)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS training_farmer_district VARCHAR(100)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS training_farmer_tehsil VARCHAR(100)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS extension_venue VARCHAR(255)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS extension_location VARCHAR(255)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS extension_department VARCHAR(150)",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS extension_purpose TEXT",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS extension_farmer_count INTEGER",
+        "ALTER TABLE activities ADD COLUMN IF NOT EXISTS other_extension_title VARCHAR(255)",
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'chk_activity_clientele'
+            ) THEN
+                ALTER TABLE activities
+                    ADD CONSTRAINT chk_activity_clientele
+                    CHECK (clientele IS NULL OR clientele IN ('PF', 'RY', 'EF')) NOT VALID;
+            END IF;
+        END $$;
+        """,
+        """
+        UPDATE farmers
+        SET farmer_name = 'N/A'
+        WHERE id IN (
+            SELECT f.id
+            FROM farmers f
+            JOIN activities a ON a.farmer_id = f.id
+            WHERE a.module_type IN ('Extension Activities', 'Other Extension Activities')
+              AND (
+                  f.farmer_name LIKE 'Extension Activity - %'
+                  OR f.farmer_name LIKE 'Other Extension Activity - %'
+              )
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM activities other_activity
+                  WHERE other_activity.farmer_id = f.id
+                    AND other_activity.module_type NOT IN ('Extension Activities', 'Other Extension Activities')
+              )
+        )
+        """,
     ]
     with engine.begin() as connection:
         for statement in statements:

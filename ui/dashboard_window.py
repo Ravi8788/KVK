@@ -16,6 +16,7 @@ from PyQt5.QtWidgets import (
 )
 
 from ui.activity_form_widget import ActivityFormWidget
+from analytics.analytics_widget import AnalyticsWidget
 from ui.backup_widget import BackupWidget
 from ui.reports_widget import ReportsWidget
 from ui.user_management_widget import UserManagementWidget
@@ -29,6 +30,7 @@ MODULES = [
     "Vocational Training Programmes",
     "Extension Activities",
     "Other Extension Activities",
+    "Analytics",
     "Reports",
     "Backup & Restore",
     "User Management",
@@ -197,6 +199,8 @@ class DashboardWindow(QMainWindow):
             return ActivityFormWidget(module_name, self.user, read_only=read_only)
         if module_name == "Reports":
             return ReportsWidget(self.user)
+        if module_name == "Analytics":
+            return AnalyticsWidget(self.user)
         if module_name == "Backup & Restore":
             return BackupWidget(self.user)
         if module_name == "User Management":
