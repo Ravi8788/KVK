@@ -3676,6 +3676,19 @@ class ActivityFormWidget(QWidget):
         self.current_page = 1
         self._load_table()
 
+    def focus_search(self, text: str) -> None:
+        """Opens this module filtered to a Farmer ID or other search text."""
+        if not hasattr(self, "search_input"):
+            return
+        self.search_input.setText((text or "").strip())
+        if hasattr(self, "filter_date_mode_combo"):
+            self.filter_date_mode_combo.setCurrentIndex(0)
+        if hasattr(self, "filter_department_combo"):
+            self.filter_department_combo.setCurrentIndex(0)
+        if hasattr(self, "filter_season_combo"):
+            self.filter_season_combo.setCurrentIndex(0)
+        self._apply_filters()
+
     def _clear_filters(self) -> None:
         self.search_input.clear()
         self.filter_department_combo.setCurrentIndex(0)

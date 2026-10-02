@@ -170,6 +170,7 @@ class SearchService:
                         "department": department.name,
                         "season": activity.season,
                         "activity_type": activity.activity_type,
+                        "search_text": farmer.farmer_code or farmer.contact_number or farmer.farmer_name,
                     }
                 )
             return results
@@ -236,6 +237,7 @@ class QualityService:
                         "detail": pair["reason"],
                         "identifier": f"{pair['left_code']} · {pair['right_code']}",
                         "open_module": "Duplicates",
+                        "search_text": "",
                     }
                     for pair in DuplicateService.find_pairs()[:limit]
                 ]
@@ -263,10 +265,19 @@ class QualityService:
                     found.append(
                         {
                             "module": activity.module_type,
-                            "title": farmer.farmer_name,
+                            "title": farmer.farmer_name if _meaningful(farmer.farmer_name) else (
+                                activity.oft_title
+                                or activity.training_title
+                                or activity.other_extension_title
+                                or activity.extension_purpose
+                                or activity.activity_type
+                                or "Untitled"
+                            ),
                             "detail": problem,
                             "identifier": farmer.farmer_code or "",
+                            "department": "",
                             "open_module": activity.module_type,
+                            "search_text": farmer.farmer_code or str(activity.id),
                         }
                     )
                     if len(found) >= limit:
@@ -301,13 +312,16 @@ class QualityService:
                         detail.append("Missing or invalid mobile")
                 if not include:
                     continue
+                context = _farmer_open_context(session, farmer)
                 found.append(
                     {
-                        "module": "Farmer",
-                        "title": farmer.farmer_name,
+                        "module": context["module"],
+                        "title": context["title"],
                         "detail": ", ".join(detail),
                         "identifier": farmer.farmer_code or "",
-                        "open_module": "Visitor Farmers",
+                        "department": context["department"],
+                        "open_module": context["open_module"],
+                        "search_text": farmer.farmer_code or farmer.contact_number or farmer.farmer_name,
                     }
                 )
                 if len(found) >= limit:
@@ -315,6 +329,75 @@ class QualityService:
             return found
         finally:
             session.close()
+
+
+def _farmer_open_context(session, farmer: Farmer) -> Dict:
+    """Finds the module that owns this farmer so quality clicks open the right page."""
+    rows = (
+        session.query(Activity, Department)
+        .join(Department, Activity.department_id == Department.id)
+        .filter(Activity.farmer_id == farmer.id)
+        .order_by(Activity.activity_date.desc(), Activity.id.desc())
+        .all()
+    )
+    if not rows:
+        return {
+            "module": "Farmer",
+            "title": farmer.farmer_name or "Untitled",
+            "department": "",
+            "open_module": "Visitor Farmers",
+        }
+
+    preferred = [
+        "Visitor Farmers",
+        "On Farm Testing (OFT)",
+        "Front Line Demonstrations (FLD)",
+        "Training Programmes",
+        "Vocational Training Programmes",
+        "Extension Activities",
+        "Other Extension Activities",
+    ]
+    if not _meaningful(farmer.farmer_name) or not _valid_mobile(farmer.contact_number):
+        preferred = [
+            "Extension Activities",
+            "Other Extension Activities",
+            "Visitor Farmers",
+            "On Farm Testing (OFT)",
+            "Front Line Demonstrations (FLD)",
+            "Training Programmes",
+            "Vocational Training Programmes",
+        ]
+    chosen = None
+    for module_name in preferred:
+        for activity, department in rows:
+            if activity.module_type == module_name:
+                chosen = (activity, department)
+                break
+        if chosen is not None:
+            break
+    if chosen is None:
+        chosen = rows[0]
+    activity, department = chosen
+    title = (
+        activity.oft_title
+        or activity.training_title
+        or activity.other_extension_title
+        or activity.extension_purpose
+        or activity.activity_type
+        or farmer.farmer_name
+        or "Untitled"
+    )
+    if not _meaningful(farmer.farmer_name) and activity.module_type in {
+        "Extension Activities",
+        "Other Extension Activities",
+    }:
+        title = activity.other_extension_title or activity.extension_purpose or activity.activity_type or title
+    return {
+        "module": activity.module_type,
+        "title": title,
+        "department": department.name,
+        "open_module": activity.module_type,
+    }
 
 
 class DuplicateService:

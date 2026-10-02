@@ -299,10 +299,23 @@ class DashboardWindow(QMainWindow):
         self.stack.setCurrentIndex(index)
         self._set_active_module(index)
 
-    def _open_module(self, name: str) -> None:
+    def _open_module(self, name: str, search_text: str = "") -> None:
         if name not in MODULES or name == "Exit":
             return
-        self._on_module_clicked(MODULES.index(name))
+        index = MODULES.index(name)
+        self._on_module_clicked(index)
+        page = self.stack.widget(index)
+        target = page
+        if hasattr(page, "widget") and callable(page.widget):
+            try:
+                nested = page.widget()
+                if nested is not None:
+                    target = nested
+            except Exception:
+                target = page
+        text = (search_text or "").strip()
+        if text and hasattr(target, "focus_search"):
+            target.focus_search(text)
 
     def _open_search(self) -> None:
         text = self.search_input.text().strip()

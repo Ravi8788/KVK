@@ -178,7 +178,7 @@ class SearchDialog(QDialog):
         box.addButton("Close", QMessageBox.RejectRole)
         box.exec_()
         if box.clickedButton() == open_button and self.open_module:
-            self.open_module(row["record_type"])
+            self.open_module(row["record_type"], row.get("search_text") or row.get("farmer_code") or "")
             self.accept()
 
     def _print_current(self):
@@ -231,13 +231,13 @@ class OverviewWidget(QWidget):
     def _open_alert(self):
         row = self.alert_table.currentRow()
         if 0 <= row < len(self.alerts):
-            self.open_module(self.alerts[row]["open_module"])
+            self.open_module(self.alerts[row]["open_module"], "")
 
     def _open_recent(self, kind):
         row = (self.added_table if kind == "added" else self.updated_table).currentRow()
         records = self.recent[kind]
         if 0 <= row < len(records):
-            self.open_module(records[row]["open_module"])
+            self.open_module(records[row]["open_module"], records[row].get("identifier") or "")
 
 
 class DataQualityWidget(QWidget):
@@ -256,7 +256,10 @@ class DataQualityWidget(QWidget):
         super().__init__()
         self.open_module = open_module
         self.rows = []
-        layout = _page("Data Quality", "Select a metric to list the records behind it. Open a row to go to the related screen.")
+        layout = _page(
+            "Data Quality",
+            "Select a metric to list the records behind it. Click a row to open that module and show the Farmer ID.",
+        )
         self.setLayout(layout)
         self.buttons = {}
         grid = QGridLayout()
@@ -267,7 +270,8 @@ class DataQualityWidget(QWidget):
             self.buttons[key] = button
             grid.addWidget(button, index // 4, index % 4)
         layout.addLayout(grid)
-        self.table = _table(["Module", "Record", "Detail", "Identifier"])
+        self.table = _table(["Module", "Department", "Record", "Detail", "Farmer ID"])
+        self.table.cellClicked.connect(self._open_row)
         self.table.cellDoubleClicked.connect(self._open_row)
         layout.addWidget(self.table)
         self.reload()
@@ -284,13 +288,26 @@ class DataQualityWidget(QWidget):
             _fill(self.table, [])
             return
         self.rows = QualityService.records(metric)
-        _fill(self.table, [[row["module"], row["title"], row["detail"], row["identifier"]] for row in self.rows])
+        _fill(
+            self.table,
+            [
+                [
+                    row["module"],
+                    row.get("department", ""),
+                    row["title"],
+                    row["detail"],
+                    row["identifier"],
+                ]
+                for row in self.rows
+            ],
+        )
         if not self.rows:
-            _fill(self.table, [["—", "No records in this group", "", ""]])
+            _fill(self.table, [["—", "", "No records in this group", "", ""]])
 
     def _open_row(self, row, _column):
         if 0 <= row < len(self.rows):
-            self.open_module(self.rows[row]["open_module"])
+            item = self.rows[row]
+            self.open_module(item["open_module"], item.get("search_text") or item.get("identifier") or "")
 
 
 class DuplicateWidget(QWidget):
@@ -359,7 +376,7 @@ class DuplicateWidget(QWidget):
         self.reload()
 
     def _correct(self):
-        self.open_module("Visitor Farmers")
+        self.open_module("Visitor Farmers", "")
 
     def _merge(self):
         pair = self._selected()
@@ -556,7 +573,7 @@ class CalendarWidget(QWidget):
     def _open_selected(self):
         row = self.table.currentRow()
         if 0 <= row < len(getattr(self, "_day_events", [])):
-            self.open_module(self._day_events[row]["open_module"])
+            self.open_module(self._day_events[row]["open_module"], self._day_events[row].get("identifier") or "")
 
 
 class VillageWidget(QWidget):
@@ -691,12 +708,12 @@ class AlertsWidget(QWidget):
     def _open(self):
         row = self.table.currentRow()
         if 0 <= row < len(self.alert_rows):
-            self.open_module(self.alert_rows[row]["open_module"])
+            self.open_module(self.alert_rows[row]["open_module"], "")
 
     def _open_anomaly(self):
         row = self.anomalies.currentRow()
         if 0 <= row < len(self.anomaly_rows):
-            self.open_module(self.anomaly_rows[row]["open_module"])
+            self.open_module(self.anomaly_rows[row]["open_module"], self.anomaly_rows[row].get("identifier") or "")
 
 
 class SettingsWidget(QWidget):
