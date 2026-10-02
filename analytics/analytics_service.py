@@ -33,6 +33,7 @@ class AnalyticsService:
     }
     VALUE_FIELDS = {
         "Activity Count": "activity_count",
+        "Participant Count": "participant_count",
         "Farmer Count": "participant_count",
         "Training Count": "training_count",
         "OFT Count": "oft_count",
@@ -150,18 +151,18 @@ class AnalyticsService:
             total_farmers = session.query(func.count(func.distinct(Activity.farmer_id))).join(Farmer, Activity.farmer_id == Farmer.id).join(Department, Activity.department_id == Department.id)
             if conditions:
                 total_farmers = total_farmers.filter(and_(*conditions))
-            total_departments = session.query(func.count(Department.id))
 
             count_for = lambda name: base.filter(Activity.module_type == name).with_entities(func.count(Activity.id)).scalar() or 0
             kpis = {
                 "Total Farmers": total_farmers.scalar() or 0,
-                "Total Activities": base.with_entities(func.count(Activity.id)).scalar() or 0,
-                "Total OFT Activities": count_for("On Farm Testing (OFT)"),
-                "Total FLD Activities": count_for("Front Line Demonstrations (FLD)"),
-                "Total Training Programmes": base.filter(Activity.module_type.in_(["Training Programmes", "Vocational Training Programmes"])).with_entities(func.count(Activity.id)).scalar() or 0,
-                "Total Extension Activities": base.filter(Activity.module_type.in_(["Extension Activities", "Other Extension Activities"])).with_entities(func.count(Activity.id)).scalar() or 0,
-                "Total Farmers Participated": base.with_entities(func.coalesce(func.sum(AnalyticsService._participant_expression()), 0)).scalar() or 0,
-                "Total Departments": total_departments.scalar() or 0,
+                "Total Visitor Farmers": count_for("Visitor Farmers"),
+                "Total OFT": count_for("On Farm Testing (OFT)"),
+                "Total FLD": count_for("Front Line Demonstrations (FLD)"),
+                "Total Training": count_for("Training Programmes"),
+                "Total Vocational Training": count_for("Vocational Training Programmes"),
+                "Total Extension Activities": count_for("Extension Activities"),
+                "Total Other Extension Activities": count_for("Other Extension Activities"),
+                "Total Participation": base.with_entities(func.coalesce(func.sum(AnalyticsService._participant_expression()), 0)).scalar() or 0,
             }
 
             by_department = AnalyticsService._grouped(session, base, Department.name, "department")

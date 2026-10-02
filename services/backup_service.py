@@ -106,6 +106,19 @@ class BackupService:
                 )
 
     @staticmethod
+    def validate_backup_file(sql_file_path: str) -> None:
+        if not os.path.isfile(sql_file_path):
+            raise ValueError("Backup file was not found.")
+        if not sql_file_path.lower().endswith(".sql"):
+            raise ValueError("Choose a PostgreSQL .sql backup file.")
+        if os.path.getsize(sql_file_path) < 50:
+            raise ValueError("The backup file looks empty.")
+        with open(sql_file_path, "r", encoding="utf-8", errors="replace") as handle:
+            head = handle.read(800).lower()
+        if "postgresql" not in head and "create table" not in head and "pg_dump" not in head:
+            raise ValueError("This file does not look like a PostgreSQL backup.")
+
+    @staticmethod
     def backup_database(output_dir: str, current_user_id: int) -> str:
         os.makedirs(output_dir, exist_ok=True)
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -142,6 +155,7 @@ class BackupService:
 
     @staticmethod
     def restore_database(sql_file_path: str, current_user_id: int) -> None:
+        BackupService.validate_backup_file(sql_file_path)
         if not os.path.exists(sql_file_path):
             raise FileNotFoundError("SQL file not found")
 

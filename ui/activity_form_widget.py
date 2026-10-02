@@ -466,7 +466,7 @@ class ActivityFormWidget(QWidget):
 
         # Visitor Farmers uses 11 columns, OFT uses 10 columns, other modules use 10
         if self.module_name == "Visitor Farmers":
-            col_count = 11
+            col_count = 12
         elif self.module_name == "On Farm Testing (OFT)":
             col_count = 10
         else:
@@ -477,6 +477,7 @@ class ActivityFormWidget(QWidget):
             headers = [
                 "Sr No",
                 "Farmer",
+                "Farmer ID",
                 "Village",
                 "Contact",
                 "Date",
@@ -515,6 +516,11 @@ class ActivityFormWidget(QWidget):
             ]
         self.table.setHorizontalHeaderLabels(headers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setHighlightSections(False)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.cellClicked.connect(self._on_row_selected)
 
@@ -664,6 +670,11 @@ class ActivityFormWidget(QWidget):
             "No. of Farmers",
         ])
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setHighlightSections(False)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.cellClicked.connect(self._on_row_selected)
         table_layout.addWidget(self.table)
@@ -776,6 +787,11 @@ class ActivityFormWidget(QWidget):
             "Title of Show",
         ])
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setHighlightSections(False)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.cellClicked.connect(self._on_row_selected)
         table_layout.addWidget(self.table)
@@ -1019,6 +1035,7 @@ class ActivityFormWidget(QWidget):
             "Crop Variety",
             "No. of Farmers",
             "Farmer Name",
+            "Farmer ID",
             "Farmer Village",
             "Mobile No.",
             "Scientist",
@@ -1037,6 +1054,11 @@ class ActivityFormWidget(QWidget):
         self.table = QTableWidget(0, len(headers))
         self.table.setHorizontalHeaderLabels(headers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setHighlightSections(False)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.cellClicked.connect(self._on_row_selected)
 
@@ -1337,6 +1359,7 @@ class ActivityFormWidget(QWidget):
             "Department",
             "Training Type",
             "Farmer Name",
+            "Farmer ID",
             "Farmer Village",
             "Mobile No.",
             "Scientist",
@@ -1350,6 +1373,11 @@ class ActivityFormWidget(QWidget):
         self.table = QTableWidget(0, len(headers))
         self.table.setHorizontalHeaderLabels(headers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setHighlightSections(False)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.cellClicked.connect(self._on_row_selected)
 
@@ -3990,12 +4018,18 @@ class ActivityFormWidget(QWidget):
         return district, tehsil, remarks
 
     def _load_table(self) -> None:
-        records, total = ActivityService.fetch_activities(
-            module_type=self.module_name,
-            page=self.current_page,
-            page_size=self.page_size,
-            filters=self._current_filters(),
-        )
+        from contextlib import nullcontext
+
+        from ui.loading_overlay import busy
+
+        holder = busy(self, "Loading records") if self.isVisible() else nullcontext()
+        with holder:
+            records, total = ActivityService.fetch_activities(
+                module_type=self.module_name,
+                page=self.current_page,
+                page_size=self.page_size,
+                filters=self._current_filters(),
+            )
         self.total_records = total
         self._table_row_records = records
         serial_start = (self.current_page - 1) * self.page_size
@@ -4021,6 +4055,7 @@ class ActivityFormWidget(QWidget):
                     self._format_optional_text_for_display(row_data["department"]),
                     self._format_optional_text_for_display(training_type),
                     self._format_optional_text_for_display(row_data["farmer_name"]),
+                    self._format_optional_text_for_display(row_data.get("farmer_code", "")),
                     self._format_optional_text_for_display(row_data["village"]),
                     self._format_optional_text_for_display(row_data["contact_number"]),
                     self._format_optional_text_for_display(row_data.get("training_farmer_scientist", "")),
@@ -4056,6 +4091,7 @@ class ActivityFormWidget(QWidget):
                 values = [
                     serial_number,
                     row_data["farmer_name"],
+                    row_data.get("farmer_code", ""),
                     row_data["village"],
                     row_data["contact_number"],
                     str(row_data["activity_date"]),
@@ -4074,6 +4110,7 @@ class ActivityFormWidget(QWidget):
                     self._format_optional_text_for_display(row_data.get("oft_crop_variety", "")),
                     self._format_optional_text_for_display(row_data.get("oft_farmer_count", "")),
                     self._format_optional_text_for_display(row_data["farmer_name"]),
+                    self._format_optional_text_for_display(row_data.get("farmer_code", "")),
                     self._format_optional_text_for_display(row_data["village"]),
                     self._format_optional_text_for_display(row_data["contact_number"]),
                     self._format_optional_text_for_display(row_data.get("oft_farmer_scientist", "")),

@@ -56,11 +56,14 @@ class ReportService:
             "Vocational Training Programmes",
             "Extension Activities",
             "Other Extension Activities",
+            "Visitor Farmers",
         ]:
             display_season = "N/A"
         elif module_type == "On Farm Testing (OFT)" and (
             department_name != "Agronomy" or activity_value == "Refinement"
         ):
+            display_season = "N/A"
+        elif module_type == "Front Line Demonstrations (FLD)" and department_name != "Horticulture":
             display_season = "N/A"
         elif not season_value or season_value.lower() in {"not required", "na", "n/a", "none", "null"}:
             display_season = "N/A"
@@ -68,8 +71,6 @@ class ReportService:
             display_season = season_value
 
         if module_type in ["Training Programmes", "Vocational Training Programmes"]:
-            display_activity = "N/A"
-        elif module_type == "On Farm Testing (OFT)" and department_name != "Agronomy":
             display_activity = "N/A"
         elif not activity_value or activity_value.lower() in {
             "not applicable",
@@ -149,6 +150,7 @@ class ReportService:
                 "oft_crop_variety",
                 "oft_farmer_count",
                 "farmer_name",
+                "farmer_code",
                 "village",
                 "contact_number",
                 "oft_farmer_scientist",
@@ -162,15 +164,16 @@ class ReportService:
             if include_department:
                 columns.append("department")
             columns.extend(["activity_type", "season"])
-            return columns
+            return ReportService._columns_for_department(columns, records, filters)
 
         if module_type == "Visitor Farmers":
-            return [
+            columns = [
                 "sr_no",
                 "module_type",
                 "activity_date",
                 "department",
                 "farmer_name",
+                "farmer_code",
                 "village",
                 "district",
                 "tehsil",
@@ -179,9 +182,10 @@ class ReportService:
                 "description",
                 "remarks",
             ]
+            return ReportService._columns_for_department(columns, records, filters)
 
         if module_type in ["Training Programmes", "Vocational Training Programmes"]:
-            return [
+            columns = [
                 "sr_no",
                 "module_type",
                 "training_title",
@@ -197,6 +201,7 @@ class ReportService:
                 "clientele",
                 "training_farmer_count",
                 "farmer_name",
+                "farmer_code",
                 "village",
                 "contact_number",
                 "training_farmer_scientist",
@@ -207,9 +212,10 @@ class ReportService:
                 "description",
                 "remarks",
             ]
+            return ReportService._columns_for_department(columns, records, filters)
 
         if module_type == "Extension Activities":
-            return [
+            columns = [
                 "sr_no",
                 "module_type",
                 "activity_date",
@@ -220,18 +226,20 @@ class ReportService:
                 "extension_purpose",
                 "extension_farmer_count",
             ]
+            return ReportService._columns_for_department(columns, records, filters)
 
         if module_type == "Other Extension Activities":
-            return [
+            columns = [
                 "sr_no",
                 "module_type",
                 "activity_date",
                 "activity_type",
                 "other_extension_title",
             ]
+            return ReportService._columns_for_department(columns, records, filters)
 
         if module_type and module_type != "All":
-            return [
+            columns = [
                 "sr_no",
                 "module_type",
                 "activity_date",
@@ -239,11 +247,13 @@ class ReportService:
                 "season",
                 "activity_type",
                 "farmer_name",
+                "farmer_code",
                 "village",
                 "contact_number",
                 "description",
                 "remarks",
             ]
+            return ReportService._columns_for_department(columns, records, filters)
 
         columns = [
             "sr_no",
@@ -253,6 +263,7 @@ class ReportService:
             "season",
             "activity_type",
             "farmer_name",
+            "farmer_code",
             "village",
             "contact_number",
             "district",
@@ -298,7 +309,37 @@ class ReportService:
             if any(ReportService._has_meaningful_value(row, col) for row in records):
                 columns.append(col)
 
+        return ReportService._columns_for_department(columns, records, filters)
+
+    @staticmethod
+    def _columns_for_department(columns: List[str], records: List[Dict], filters: Optional[Dict]) -> List[str]:
+        """Drop fields the selected department does not collect on its form."""
+        department_name = ((filters or {}).get("department_name") or "All").strip() or "All"
+        module_type = ((filters or {}).get("module_type") or "All").strip() or "All"
+        if module_type == "All":
+            modules_in_records = {
+                str(row.get("module_type", "")).strip()
+                for row in records
+                if str(row.get("module_type", "")).strip()
+            }
+            if len(modules_in_records) == 1:
+                module_type = next(iter(modules_in_records))
+
+        if (filters or {}).get("department_id") is not None:
+            columns = [column for column in columns if column != "department"]
+        if "season" in columns and not ReportService._department_uses_season(department_name, module_type):
+            columns = [column for column in columns if column != "season"]
         return columns
+
+    @staticmethod
+    def _department_uses_season(department_name: str, module_type: str) -> bool:
+        if module_type == "On Farm Testing (OFT)":
+            return department_name in {"All", "Agronomy"}
+        if module_type == "Front Line Demonstrations (FLD)":
+            return department_name in {"All", "Horticulture"}
+        if module_type == "All":
+            return department_name in {"All", "Agronomy", "Horticulture"}
+        return False
 
     @staticmethod
     def _export_header_labels() -> Dict[str, str]:
@@ -310,6 +351,7 @@ class ReportService:
             "season": "Season",
             "activity_type": "Activity",
             "farmer_name": "Farmer Name",
+            "farmer_code": "Farmer ID",
             "village": "Farmer Village",
             "district": "District",
             "tehsil": "Tehsil",
@@ -373,6 +415,10 @@ class ReportService:
         department_id: Optional[int],
         module_type: Optional[str],
         mobile_number: Optional[str] = None,
+        season: Optional[str] = None,
+        village: Optional[str] = None,
+        activity_type: Optional[str] = None,
+        farmer_query: Optional[str] = None,
         page: int = 1,
         page_size: int = 200,
     ) -> Tuple[List[Dict], int]:
@@ -398,6 +444,29 @@ class ReportService:
                 conditions.append(Activity.module_type == module_type)
             if mobile_number:
                 conditions.append(Farmer.contact_number.ilike(f"%{mobile_number}%"))
+            if season and season != "All":
+                conditions.append(Activity.season == season)
+            if village:
+                conditions.append(Farmer.village.ilike(f"%{village.strip()}%"))
+            if activity_type:
+                conditions.append(Activity.activity_type.ilike(f"%{activity_type.strip()}%"))
+            if farmer_query:
+                from services.activity_service import ActivityService
+
+                query_text = farmer_query.strip()
+                id_match = ActivityService.farmer_id_number_match(query_text)
+                if query_text.isdigit() and len(query_text) <= 6 and id_match is not None:
+                    conditions.append(id_match)
+                else:
+                    like = f"%{query_text}%"
+                    farmer_match = [
+                        Farmer.farmer_name.ilike(like),
+                        Farmer.farmer_code.ilike(like),
+                        Farmer.contact_number.ilike(like),
+                    ]
+                    if id_match is not None:
+                        farmer_match.append(id_match)
+                    conditions.append(or_(*farmer_match))
 
             if conditions:
                 query = query.filter(and_(*conditions))
@@ -459,6 +528,7 @@ class ReportService:
                         "sr_no": serial_start + len(data) + 1,
                         "module_type": activity.module_type,
                         "farmer_name": farmer_name,
+                        "farmer_code": farmer.farmer_code or "N/A",
                         "village": ReportService._normalize_optional_text(farmer.village),
                         "district": location_parts["district"],
                         "tehsil": location_parts["tehsil"],
@@ -525,7 +595,33 @@ class ReportService:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         columns = ReportService._export_columns(records, filters)
         labels = ReportService.get_header_labels(filters)
-        return PDFBuilder.build_activity_report(records, output_path, title, columns=columns, headers=labels)
+        from services.smart_service import SettingsService
+
+        filter_bits = []
+        if filters:
+            if filters.get("start_date") and filters.get("end_date"):
+                filter_bits.append(f"{filters['start_date']} to {filters['end_date']}")
+            for key, label in (
+                ("department_name", "Department"),
+                ("module_type", "Module"),
+                ("season", "Season"),
+                ("village", "Village"),
+                ("activity_type", "Activity"),
+                ("farmer_query", "Farmer"),
+            ):
+                value = filters.get(key)
+                if value and value != "All":
+                    filter_bits.append(f"{label}: {value}")
+        return PDFBuilder.build_activity_report(
+            records,
+            output_path,
+            title,
+            columns=columns,
+            headers=labels,
+            kvk_name=SettingsService.get("kvk_name"),
+            kvk_address=SettingsService.get("kvk_address"),
+            filter_text=" | ".join(filter_bits),
+        )
 
     @staticmethod
     def record_report_generation(

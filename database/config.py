@@ -1,9 +1,19 @@
 import os
+import sys
+from pathlib import Path
 from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
 
-load_dotenv()
+
+def _env_path() -> Path:
+    """Prefer the .env beside the EXE when packaged, otherwise the project file."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent / ".env"
+    return Path(__file__).resolve().parent.parent / ".env"
+
+
+load_dotenv(_env_path())
 
 
 def get_database_url() -> str:

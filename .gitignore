@@ -17,6 +17,7 @@ env/
 # Logs and runtime artifacts
 logs/
 *.log
+backups/
 
 # Build and distribution artifacts
 build/

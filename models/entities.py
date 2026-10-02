@@ -36,6 +36,7 @@ class Farmer(Base):
     __tablename__ = "farmers"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    farmer_code: Mapped[Optional[str]] = mapped_column(String(20))
     farmer_name: Mapped[str] = mapped_column(String(150), nullable=False)
     village: Mapped[str] = mapped_column(String(150), nullable=False)
     contact_number: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -133,4 +134,27 @@ class AuditLog(Base):
 
     __table_args__ = (
         Index("idx_audit_logs_created_at", "created_at"),
+    )
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    value: Mapped[Optional[str]] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class DuplicateReview(Base):
+    __tablename__ = "duplicate_reviews"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    farmer_low_id: Mapped[int] = mapped_column(ForeignKey("farmers.id"), nullable=False)
+    farmer_high_id: Mapped[int] = mapped_column(ForeignKey("farmers.id"), nullable=False)
+    decision: Mapped[str] = mapped_column(String(20), nullable=False)
+    reviewed_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("uq_duplicate_review_pair", "farmer_low_id", "farmer_high_id", unique=True),
     )

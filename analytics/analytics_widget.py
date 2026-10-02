@@ -16,6 +16,7 @@ from reportlab.platypus import SimpleDocTemplate, Spacer, Table, TableStyle, Par
 
 from analytics.analytics_service import AnalyticsService
 from services.report_service import ReportService
+from ui.loading_overlay import busy
 
 
 class SimpleChart(QWidget):
@@ -126,8 +127,10 @@ class AnalyticsWidget(QWidget):
         layout.setVerticalSpacing(4)
         self.from_date = QDateEdit(QDate.currentDate().addYears(-1))
         self.from_date.setCalendarPopup(True)
+        self.from_date.setDisplayFormat("dd-MM-yyyy")
         self.to_date = QDateEdit(QDate.currentDate())
         self.to_date.setCalendarPopup(True)
+        self.to_date.setDisplayFormat("dd-MM-yyyy")
         self.department = QComboBox()
         self.module = QComboBox()
         self.season = QComboBox()
@@ -187,6 +190,11 @@ class AnalyticsWidget(QWidget):
         self.performance_table = QTableWidget(0, 6)
         self.performance_table.setHorizontalHeaderLabels(["Department", "Activities", "Participants", "Trainings", "OFT", "FLD"])
         self.performance_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.performance_table.setAlternatingRowColors(True)
+        self.performance_table.setShowGrid(False)
+        self.performance_table.verticalHeader().setVisible(False)
+        self.performance_table.horizontalHeader().setStretchLastSection(True)
+        self.performance_table.horizontalHeader().setHighlightSections(False)
         self.performance_table.setMinimumHeight(150)
         self.performance_table.setMaximumHeight(245)
         self.performance_table.horizontalHeader().setStretchLastSection(True)
@@ -275,8 +283,9 @@ class AnalyticsWidget(QWidget):
 
     def _apply_filters(self):
         try:
-            self.dashboard_data = AnalyticsService.dashboard(self._filters())
-            self._refresh_dashboard()
+            with busy(self, "Loading analytics"):
+                self.dashboard_data = AnalyticsService.dashboard(self._filters())
+                self._refresh_dashboard()
             self.status_label.setText("Updated")
         except Exception as exc:
             self.status_label.setText("Database error")
@@ -311,7 +320,8 @@ class AnalyticsWidget(QWidget):
 
     def _generate_pivot(self):
         try:
-            result = AnalyticsService.pivot(self._filters(), self.pivot_row.currentText(), self.pivot_column.currentText(), self.pivot_value.currentText(), self.pivot_aggregation.currentText())
+            with busy(self, "Building the pivot"):
+                result = AnalyticsService.pivot(self._filters(), self.pivot_row.currentText(), self.pivot_column.currentText(), self.pivot_value.currentText(), self.pivot_aggregation.currentText())
             columns = result["columns"]
             self.pivot_table.setColumnCount(len(columns) + 1); self.pivot_table.setHorizontalHeaderLabels([self.pivot_row.currentText()] + columns)
             self.pivot_table.setRowCount(len(result["rows"]))

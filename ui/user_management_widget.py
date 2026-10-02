@@ -1,3 +1,4 @@
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -27,6 +28,8 @@ class UserManagementWidget(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
+        root.setContentsMargins(10, 10, 10, 10)
+        root.setSpacing(10)
 
         title = QLabel("User Management")
         title.setObjectName("CardTitle")
@@ -40,8 +43,11 @@ class UserManagementWidget(QWidget):
         form_card = QFrame()
         form_card.setObjectName("Card")
         form_layout = QVBoxLayout(form_card)
+        form_layout.setContentsMargins(16, 16, 16, 16)
+        form_layout.setSpacing(12)
 
         form = QFormLayout()
+        form.setSpacing(10)
         self.username_input = QLineEdit()
         self.full_name_input = QLineEdit()
         self.password_input = QLineEdit()
@@ -55,10 +61,15 @@ class UserManagementWidget(QWidget):
         form.addRow("Role*", self.role_combo)
 
         row = QHBoxLayout()
-        add_user_btn = QPushButton("Create User")
+        add_user_btn = QPushButton("Create user")
+        add_user_btn.setCursor(Qt.PointingHandCursor)
         add_user_btn.clicked.connect(self._create_user)
-        deactivate_btn = QPushButton("Deactivate Selected")
-        activate_btn = QPushButton("Activate Selected")
+        deactivate_btn = QPushButton("Deactivate selected")
+        activate_btn = QPushButton("Activate selected")
+        deactivate_btn.setObjectName("SecondaryButton")
+        activate_btn.setObjectName("SecondaryButton")
+        deactivate_btn.setCursor(Qt.PointingHandCursor)
+        activate_btn.setCursor(Qt.PointingHandCursor)
         deactivate_btn.clicked.connect(lambda: self._set_status_for_selected(False))
         activate_btn.clicked.connect(lambda: self._set_status_for_selected(True))
 
@@ -73,6 +84,13 @@ class UserManagementWidget(QWidget):
         self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(["ID", "Username", "Full Name", "Role", "Active"])
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SingleSelection)
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setHighlightSections(False)
 
         root.addWidget(form_card)
         root.addWidget(self.table)

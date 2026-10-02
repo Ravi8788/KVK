@@ -5,10 +5,11 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import traceback
 
-from PyQt5.QtWidgets import QApplication, QMessageBox
+from PyQt5.QtWidgets import QApplication, QMessageBox, QStyle
 
 from controllers.auth_controller import AuthController
 from database.init_db import create_tables, seed_departments, test_connection
+from ui.loading_overlay import LoadingWindow
 from ui.login_window import LoginWindow
 from ui.styles import APP_STYLE
 
@@ -49,6 +50,8 @@ def bootstrap_database() -> bool:
         create_tables()
         seed_departments()
         AuthController.ensure_default_admin()
+        from services.activity_service import ActivityService
+        ActivityService.remove_farmers_without_activities()
         # Sync primary key sequences to prevent duplicate key errors
         from services.backup_service import BackupService
         BackupService._sync_primary_key_sequences()
@@ -74,13 +77,21 @@ def main() -> None:
     sys.excepthook = _handle_unexpected_exception
 
     app = QApplication(sys.argv)
+    app.setApplicationName("KVK System")
+    app.setStyle("Fusion")
     app.setStyleSheet(APP_STYLE)
+    app.setWindowIcon(app.style().standardIcon(QStyle.SP_FileDialogContentsView))
 
+    loader = LoadingWindow("Connecting to the database")
+    loader.show()
+    app.processEvents()
     if not bootstrap_database():
+        loader.close()
         sys.exit(1)
+    loader.close()
 
     login = LoginWindow()
-    login.show()
+    login.showFullScreen()
     sys.exit(app.exec_())
 
 

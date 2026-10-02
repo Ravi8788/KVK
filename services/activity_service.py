@@ -1,15 +1,27 @@
 from datetime import date
 from typing import Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import Integer, and_, cast, func, or_
 
 from database.session import SessionLocal
-from models.entities import Activity, Department, Farmer
+from models.entities import Activity, Department, DuplicateReview, Farmer
 from services.audit_service import AuditService
 
 
 class ActivityService:
     """CRUD operations for farmer activities across all modules."""
+
+    @staticmethod
+    def farmer_id_number_match(term: str):
+        """Match KVK-F-000048 when the search is 48, 048, or 000048."""
+        digits = (term or "").strip()
+        if not digits.isdigit():
+            return None
+        numeric_code = cast(
+            func.nullif(func.regexp_replace(Farmer.farmer_code, "[^0-9]", "", "g"), ""),
+            Integer,
+        )
+        return numeric_code == int(digits)
 
     MODULES = [
         "Visitor Farmers",
@@ -187,6 +199,8 @@ class ActivityService:
             .first()
         )
         if farmer:
+            if not farmer.farmer_code:
+                farmer.farmer_code = f"KVK-F-{farmer.id:06d}"
             return farmer
 
         farmer = Farmer(
@@ -196,6 +210,8 @@ class ActivityService:
         )
         session.add(farmer)
         session.flush()
+        if not farmer.farmer_code:
+            farmer.farmer_code = f"KVK-F-{farmer.id:06d}"
         return farmer
 
     @staticmethod
@@ -356,7 +372,22 @@ class ActivityService:
                 raise ValueError("Activity not found")
 
             module_type = activity.module_type
+            farmer_id = activity.farmer_id
             session.delete(activity)
+            session.flush()
+            remaining = session.query(Activity.id).filter(Activity.farmer_id == farmer_id).count()
+            removed_farmer = False
+            if remaining == 0:
+                session.query(DuplicateReview).filter(
+                    or_(
+                        DuplicateReview.farmer_low_id == farmer_id,
+                        DuplicateReview.farmer_high_id == farmer_id,
+                    )
+                ).delete(synchronize_session=False)
+                farmer = session.query(Farmer).filter(Farmer.id == farmer_id).first()
+                if farmer is not None:
+                    session.delete(farmer)
+                    removed_farmer = True
             session.commit()
 
             AuditService.log_action(
@@ -364,8 +395,41 @@ class ActivityService:
                 action="delete_activity",
                 module_type=module_type,
                 record_id=activity_id,
-                details="Deleted activity",
+                details="Deleted activity and farmer record" if removed_farmer else "Deleted activity",
             )
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    @staticmethod
+    def remove_farmers_without_activities() -> int:
+        """Removes farmer rows left behind after their activities were deleted."""
+        session = SessionLocal()
+        try:
+            orphan_ids = [
+                farmer_id
+                for (farmer_id,) in session.query(Farmer.id)
+                .outerjoin(Activity, Activity.farmer_id == Farmer.id)
+                .filter(Activity.id.is_(None))
+                .all()
+            ]
+            if not orphan_ids:
+                return 0
+            session.query(DuplicateReview).filter(
+                or_(
+                    DuplicateReview.farmer_low_id.in_(orphan_ids),
+                    DuplicateReview.farmer_high_id.in_(orphan_ids),
+                )
+            ).delete(synchronize_session=False)
+            deleted = (
+                session.query(Farmer)
+                .filter(Farmer.id.in_(orphan_ids))
+                .delete(synchronize_session=False)
+            )
+            session.commit()
+            return int(deleted or 0)
         except Exception:
             session.rollback()
             raise
@@ -397,9 +461,19 @@ class ActivityService:
 
                 if search_text:
                     like_pattern = f"%{search_text}%"
-                    base_query = base_query.filter(
-                        or_(
+                    id_match = ActivityService.farmer_id_number_match(search_text)
+                    if search_text.isdigit() and len(search_text) <= 6 and id_match is not None:
+                        base_query = base_query.filter(id_match)
+                    else:
+                        search_match = [
                             Farmer.farmer_name.ilike(like_pattern),
+                            Farmer.farmer_code.ilike(like_pattern),
+                        ]
+                        if id_match is not None:
+                            search_match.append(id_match)
+                        base_query = base_query.filter(
+                            or_(
+                                *search_match,
                             Farmer.village.ilike(like_pattern),
                             Farmer.contact_number.ilike(like_pattern),
                             Activity.activity_type.ilike(like_pattern),
@@ -471,6 +545,7 @@ class ActivityService:
                     {
                         "id": activity.id,
                         "farmer_name": farmer.farmer_name,
+                        "farmer_code": farmer.farmer_code or "",
                         "village": farmer.village,
                         "contact_number": farmer.contact_number,
                         "activity_date": activity.activity_date,
@@ -568,6 +643,7 @@ class ActivityService:
                     {
                         "id": activity.id,
                         "farmer_name": farmer.farmer_name,
+                        "farmer_code": farmer.farmer_code or "",
                         "village": farmer.village,
                         "contact_number": farmer.contact_number,
                         "activity_date": activity.activity_date,

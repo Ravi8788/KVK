@@ -20,6 +20,30 @@ def create_tables() -> None:
     """Creates ORM-managed tables if they do not exist."""
     Base.metadata.create_all(bind=engine)
     _ensure_oft_activity_columns()
+    _seed_settings()
+
+
+def _seed_settings() -> None:
+    """Inserts office settings the first time, without overwriting staff changes."""
+    from models.entities import AppSetting
+
+    defaults = {
+        "kvk_name": "Krishi Vigyan Kendra",
+        "kvk_address": "",
+        "backup_folder": "backups",
+        "session_timeout_minutes": "30",
+        "backup_overdue_days": "7",
+        "last_import_invalid": "0",
+    }
+    session = SessionLocal()
+    try:
+        existing = {row.key for row in session.query(AppSetting.key).all()}
+        for key, value in defaults.items():
+            if key not in existing:
+                session.add(AppSetting(key=key, value=value))
+        session.commit()
+    finally:
+        session.close()
 
 
 def _ensure_oft_activity_columns() -> None:
@@ -61,6 +85,13 @@ def _ensure_oft_activity_columns() -> None:
         "ALTER TABLE activities ADD COLUMN IF NOT EXISTS extension_purpose TEXT",
         "ALTER TABLE activities ADD COLUMN IF NOT EXISTS extension_farmer_count INTEGER",
         "ALTER TABLE activities ADD COLUMN IF NOT EXISTS other_extension_title VARCHAR(255)",
+        "ALTER TABLE farmers ADD COLUMN IF NOT EXISTS farmer_code VARCHAR(20)",
+        """
+        UPDATE farmers
+        SET farmer_code = 'KVK-F-' || LPAD(id::text, 6, '0')
+        WHERE farmer_code IS NULL OR BTRIM(farmer_code) = ''
+        """,
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_farmers_farmer_code ON farmers (farmer_code)",
         """
         DO $$
         BEGIN

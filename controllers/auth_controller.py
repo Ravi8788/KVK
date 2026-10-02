@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from database.session import SessionLocal
 from models.entities import User
+from services.audit_service import AuditService
 
 
 class AuthController:
@@ -61,13 +62,17 @@ class AuthController:
             user = session.query(User).filter(User.username == username, User.is_active.is_(True)).first()
             if not user:
                 AuthController._register_failed_attempt(username)
+                AuditService.log_action(None, "login_failed", "Authentication", None, f"Unknown or inactive user {username}")
                 return None
             if not pbkdf2_sha256.verify(password, user.password_hash):
                 AuthController._register_failed_attempt(username)
+                AuditService.log_action(user.id, "login_failed", "Authentication", user.id, f"Wrong password for {username}")
                 return None
 
             AuthController._failed_attempts.pop(username, None)
+            user_id = user.id
             session.expunge(user)
+            AuditService.log_action(user_id, "login", "Authentication", user_id, f"Login succeeded for {username}")
             return user
         finally:
             session.close()
@@ -81,3 +86,21 @@ class AuthController:
             state["lock_until"] = now + AuthController.LOCKOUT_SECONDS
             state["count"] = 0
         AuthController._failed_attempts[username] = state
+
+    @staticmethod
+    def change_password(user_id: int, current_password: str, new_password: str) -> None:
+        if len(new_password or "") < 8:
+            raise ValueError("New password must be at least 8 characters.")
+        session = SessionLocal()
+        try:
+            user = session.query(User).filter(User.id == user_id, User.is_active.is_(True)).first()
+            if user is None or not pbkdf2_sha256.verify(current_password, user.password_hash):
+                raise ValueError("Current password is not correct.")
+            user.password_hash = pbkdf2_sha256.hash(new_password)
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+        AuditService.log_action(user_id, "change_password", "Settings", user_id, "Password changed")
