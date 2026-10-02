@@ -25,7 +25,7 @@ PARTICIPANT_FIELDS = ("oft_farmer_count", "training_farmer_count", "extension_fa
 
 class SettingsService:
     DEFAULTS = {
-        "kvk_name": "Krishi Vigyan Kendra",
+        "kvk_name": "Krishi Vidnyankendra",
         "kvk_address": "",
         "backup_folder": "backups",
         "session_timeout_minutes": "30",

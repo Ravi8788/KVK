@@ -17,7 +17,7 @@ class PDFBuilder:
         title: str,
         columns: Optional[List[str]] = None,
         headers: Optional[Dict[str, str]] = None,
-        kvk_name: str = "Krishi Vigyan Kendra",
+        kvk_name: str = "Krishi Vidnyankendra",
         kvk_address: str = "",
         filter_text: str = "",
     ) -> str:
@@ -59,7 +59,7 @@ class PDFBuilder:
             textColor=colors.white,
         )
         story = [
-            Paragraph(kvk_name or "Krishi Vigyan Kendra", styles["Title"]),
+            Paragraph(kvk_name or "Krishi Vidnyankendra", styles["Title"]),
             Paragraph(title, styles["Heading2"]),
             Spacer(1, 4),
         ]
@@ -104,7 +104,7 @@ class PDFBuilder:
             canvas.saveState()
             canvas.setFont("Helvetica", 8)
             canvas.setFillColor(colors.HexColor("#225d36"))
-            canvas.drawString(18, 14, kvk_name or "Krishi Vigyan Kendra")
+            canvas.drawString(18, 14, kvk_name or "Krishi Vidnyankendra")
             canvas.drawRightString(doc_template.pagesize[0] - 18, 14, f"Page {doc_template.page}")
             canvas.restoreState()
 

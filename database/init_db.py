@@ -28,7 +28,7 @@ def _seed_settings() -> None:
     from models.entities import AppSetting
 
     defaults = {
-        "kvk_name": "Krishi Vigyan Kendra",
+        "kvk_name": "Krishi Vidnyankendra",
         "kvk_address": "",
         "backup_folder": "backups",
         "session_timeout_minutes": "30",

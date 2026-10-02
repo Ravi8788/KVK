@@ -1,4 +1,4 @@
-# Krishi Vigyan Kendra (KVK) Database Management System
+# Krishi Vidnyankendra (KVK) Database Management System
 
 Desktop application for KVK offices to manage farmer activities, trainings, and reports with PostgreSQL-backed long-term storage.
 

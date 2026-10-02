@@ -37,7 +37,7 @@ class LoginWindow(QMainWindow):
         card_layout.setContentsMargins(32, 32, 32, 28)
         card_layout.setSpacing(10)
 
-        eyebrow = QLabel("KRISHI VIGYAN KENDRA")
+        eyebrow = QLabel("KRISHI VIDNYANKENDRA")
         eyebrow.setObjectName("HintLabel")
         title = QLabel("Sign in")
         title.setObjectName("TitleLabel")
