@@ -43,7 +43,7 @@ def _handle_unexpected_exception(exc_type, exc_value, exc_tb) -> None:
     )
 
 
-def bootstrap_database() -> bool:
+def bootstrap_database() -> Exception | None:
     """Initializes database objects and default master/admin data."""
     try:
         test_connection()
@@ -55,21 +55,10 @@ def bootstrap_database() -> bool:
         # Sync primary key sequences to prevent duplicate key errors
         from services.backup_service import BackupService
         BackupService._sync_primary_key_sequences()
-        return True
+        return None
     except Exception as exc:
         logging.exception("Database bootstrap failed")
-        app_env = os.getenv("APP_ENV", "development").strip().lower()
-        app = QApplication.instance() or QApplication(sys.argv)
-        detail_suffix = ""
-        if app_env != "production":
-            detail_suffix = f"\n\nTechnical details: {exc}"
-        QMessageBox.critical(
-            None,
-            "Database Error",
-            "Could not initialize PostgreSQL. Check .env connection settings."
-            + detail_suffix,
-        )
-        return False
+        return exc
 
 
 def main() -> None:
@@ -85,10 +74,19 @@ def main() -> None:
     loader = LoadingWindow("Connecting to the database")
     loader.show()
     app.processEvents()
-    if not bootstrap_database():
-        loader.close()
-        sys.exit(1)
+    database_error = bootstrap_database()
     loader.close()
+    if database_error is not None:
+        detail_suffix = ""
+        if os.getenv("APP_ENV", "development").strip().lower() != "production":
+            detail_suffix = f"\n\nTechnical details: {database_error}"
+        QMessageBox.critical(
+            None,
+            "Database Error",
+            "Could not initialize PostgreSQL. Check .env connection settings."
+            + detail_suffix,
+        )
+        sys.exit(1)
 
     login = LoginWindow()
     login.showFullScreen()
