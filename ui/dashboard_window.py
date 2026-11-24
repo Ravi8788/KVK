@@ -37,6 +37,7 @@ from ui.smart_widgets import (
     YearCompareWidget,
 )
 from ui.user_management_widget import UserManagementWidget
+from ui.document_digitization_widget import DocumentDigitizationWidget
 from services.audit_service import AuditService
 from services.smart_service import SettingsService
 
@@ -59,6 +60,7 @@ MODULES = [
     "Village Analysis",
     "Year Comparison",
     "Alerts",
+    "Document Digitization",
     "Settings",
     "Backup & Restore",
     "User Management",
@@ -214,6 +216,8 @@ class DashboardWindow(QMainWindow):
 
     def _icon_for_module(self, module_name: str):
         style = QApplication.style()
+        if module_name == "Document Digitization":
+            return style.standardIcon(QStyle.SP_FileDialogContentsView)
         if module_name == "Reports":
             return style.standardIcon(QStyle.SP_FileDialogDetailedView)
         if module_name == "Backup & Restore":
@@ -274,6 +278,8 @@ class DashboardWindow(QMainWindow):
             return ScrollPage(AlertsWidget(self._open_module))
         if module_name == "Settings":
             return ScrollPage(SettingsWidget(self.user))
+        if module_name == "Document Digitization":
+            return DocumentDigitizationWidget(self.user)
         if module_name == "Backup & Restore":
             return BackupWidget(self.user)
         if module_name == "User Management":

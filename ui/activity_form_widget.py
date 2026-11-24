@@ -287,10 +287,15 @@ class ActivityFormWidget(QWidget):
             fld_row_layout.addWidget(self.fld_t2_radio)
             fld_row_layout.addWidget(self.fld_t3_radio)
             fld_row_layout.addStretch(1)
+            self.fld_technical_widget = fld_row
 
             self.fld_t1_radio.toggled.connect(lambda checked: self.description_input.setPlainText("T1") if checked else None)
             self.fld_t2_radio.toggled.connect(lambda checked: self.description_input.setPlainText("T2") if checked else None)
             self.fld_t3_radio.toggled.connect(lambda checked: self.description_input.setPlainText("T3") if checked else None)
+            for radio in self.fld_technical_group.buttons():
+                radio.toggled.connect(
+                    lambda checked, target=fld_row: self._clear_validation_highlight(target) if checked else None
+                )
 
             fld_description_widget = fld_row
             fld_description_label = "Technical Assessment*"
@@ -2041,25 +2046,46 @@ class ActivityFormWidget(QWidget):
         purpose_value = form_state["purpose"].currentText().strip()
 
         if not farmer_name:
-            QMessageBox.warning(self, "Validation", f"Enter farmer name in Farmer Form {form_state['index'] + 1}.")
+            self._show_field_validation_error(
+                f"Enter farmer name in Farmer Form {form_state['index'] + 1}.",
+                form_state["farmer_name"],
+            )
             return False
         if not self._is_valid_district(district_value):
-            QMessageBox.warning(self, "Validation", f"Select valid district in Farmer Form {form_state['index'] + 1}.")
+            self._show_field_validation_error(
+                f"Select valid district in Farmer Form {form_state['index'] + 1}.",
+                form_state["district"],
+            )
             return False
         if not self._is_valid_tehsil(district_value, tehsil_value):
-            QMessageBox.warning(self, "Validation", f"Select valid tehsil in Farmer Form {form_state['index'] + 1}.")
+            self._show_field_validation_error(
+                f"Select valid tehsil in Farmer Form {form_state['index'] + 1}.",
+                form_state["tehsil"],
+            )
             return False
         if not village_value:
-            QMessageBox.warning(self, "Validation", f"Select village in Farmer Form {form_state['index'] + 1}.")
+            self._show_field_validation_error(
+                f"Select village in Farmer Form {form_state['index'] + 1}.",
+                form_state["village"],
+            )
             return False
         if not mobile_value.isdigit() or len(mobile_value) != 10:
-            QMessageBox.warning(self, "Validation", f"Enter exactly 10 digits for mobile number in Farmer Form {form_state['index'] + 1}.")
+            self._show_field_validation_error(
+                f"Enter exactly 10 digits for mobile number in Farmer Form {form_state['index'] + 1}.",
+                form_state["mobile"],
+            )
             return False
         if not scientist_value:
-            QMessageBox.warning(self, "Validation", f"Enter scientist name in Farmer Form {form_state['index'] + 1}.")
+            self._show_field_validation_error(
+                f"Enter scientist name in Farmer Form {form_state['index'] + 1}.",
+                form_state["scientist"],
+            )
             return False
         if not purpose_value:
-            QMessageBox.warning(self, "Validation", f"Select purpose in Farmer Form {form_state['index'] + 1}.")
+            self._show_field_validation_error(
+                f"Select purpose in Farmer Form {form_state['index'] + 1}.",
+                form_state["purpose"],
+            )
             return False
         return True
 
@@ -2310,6 +2336,9 @@ class ActivityFormWidget(QWidget):
                 venue_value = venue_village
         elif not self._is_oft_style_module():
             venue_value = self.village_input.currentText().strip() if hasattr(self, "village_input") else ""
+        else:
+            # OFT and FLD reuse village_input for Crop Variety, not venue.
+            venue_value = self.village_input.text().strip()
 
         # Get contact number (not available for training)
         contact_number = ""
@@ -2541,65 +2570,133 @@ class ActivityFormWidget(QWidget):
 
         self.season_combo.blockSignals(False)
 
+    def _highlight_validation_field(self, widget) -> None:
+        if widget is None:
+            return
+
+        if widget.property("validationError") is not True:
+            widget.setProperty("validationOriginalStyle", widget.styleSheet())
+        widget.setProperty("validationError", True)
+        widget.setStyleSheet("border: 1px solid #c53030; background-color: #fff5f5;")
+        widget.style().unpolish(widget)
+        widget.style().polish(widget)
+
+        if widget.property("validationSignalConnected") is not True:
+            for signal_name in ("textChanged", "currentIndexChanged", "dateChanged", "toggled"):
+                signal = getattr(widget, signal_name, None)
+                if signal is not None:
+                    signal.connect(lambda *args, target=widget: self._clear_validation_highlight(target))
+            widget.setProperty("validationSignalConnected", True)
+
+        if hasattr(widget, "lineEdit") and callable(widget.lineEdit):
+            line_edit = widget.lineEdit()
+            if line_edit is not None:
+                if line_edit.property("validationError") is not True:
+                    line_edit.setProperty("validationOriginalStyle", line_edit.styleSheet())
+                line_edit.setProperty("validationError", True)
+                line_edit.setStyleSheet("border: 1px solid #c53030; background-color: #fff5f5;")
+                if line_edit.property("validationSignalConnected") is not True:
+                    line_edit.textChanged.connect(
+                        lambda *args, target=widget: self._clear_validation_highlight(target)
+                    )
+                    line_edit.setProperty("validationSignalConnected", True)
+
+    @staticmethod
+    def _clear_validation_highlight(widget) -> None:
+        if widget is None or widget.property("validationError") is not True:
+            return
+        original_style = widget.property("validationOriginalStyle")
+        widget.setStyleSheet(original_style or "")
+        widget.setProperty("validationError", False)
+        widget.style().unpolish(widget)
+        widget.style().polish(widget)
+
+        if hasattr(widget, "lineEdit") and callable(widget.lineEdit):
+            line_edit = widget.lineEdit()
+            if line_edit is not None and line_edit.property("validationError") is True:
+                line_edit.setStyleSheet(line_edit.property("validationOriginalStyle") or "")
+                line_edit.setProperty("validationError", False)
+
+    def _show_field_validation_error(self, message: str, widget) -> None:
+        self._highlight_validation_field(widget)
+        if widget is not None:
+            widget.setFocus()
+        QMessageBox.warning(self, "Validation", message)
+
+    def _show_required_field_errors(self, fields) -> bool:
+        missing_fields = [
+            (label, widget)
+            for label, widget, value in fields
+            if value is None or (isinstance(value, str) and not value.strip())
+        ]
+        if not missing_fields:
+            return True
+
+        for _, widget in missing_fields:
+            self._highlight_validation_field(widget)
+        if missing_fields[0][1] is not None:
+            missing_fields[0][1].setFocus()
+        labels = "\n".join(f"- {label}" for label, _ in missing_fields)
+        QMessageBox.warning(
+            self,
+            "Validation",
+            f"Please fill the following required field(s):\n{labels}",
+        )
+        return False
+
     def _validate_payload(self, payload) -> bool:
         if self.module_name == "Extension Activities":
-            required = [
-                payload["activity_type"] if self.activity_type_input.currentIndex() > 0 else "",
-                payload["activity_date"],
-                payload["extension_venue"],
-                payload["extension_location"],
-                payload["department_id"],
-                payload["extension_purpose"],
-                payload["extension_farmer_count"],
+            required_fields = [
+                ("Activity*", self.activity_type_input, payload["activity_type"] if self.activity_type_input.currentIndex() > 0 else ""),
+                ("Date*", self.date_input, payload["activity_date"]),
+                ("Venue*", self.extension_venue_input, payload["extension_venue"]),
+                ("Location*", self.extension_location_input, payload["extension_location"]),
+                ("Department*", self.department_combo, payload["department_id"]),
+                ("Purpose of Visit*", self.extension_purpose_input, payload["extension_purpose"]),
+                ("No. of Farmers*", self.extension_farmer_count_input, self.extension_farmer_count_input.text().strip()),
             ]
-            if any(value is None or not str(value).strip() for value in required):
-                QMessageBox.warning(self, "Validation", "Please fill all required fields marked with *.")
+            if not self._show_required_field_errors(required_fields):
                 return False
             if payload["extension_farmer_count"] <= 0:
-                QMessageBox.warning(self, "Validation", "No. of Farmers must be greater than zero.")
+                self._show_field_validation_error("No. of Farmers must be greater than zero.", self.extension_farmer_count_input)
                 return False
             return True
 
         if self.module_name == "Other Extension Activities":
-            required = [
-                payload["activity_type"] if self.activity_type_input.currentIndex() > 0 else "",
-                payload["activity_date"],
-                payload["department_id"],
-                payload["other_extension_title"],
+            required_fields = [
+                ("Activity*", self.activity_type_input, payload["activity_type"] if self.activity_type_input.currentIndex() > 0 else ""),
+                ("Date*", self.date_input, payload["activity_date"]),
+                ("Department*", self.department_combo, payload["department_id"]),
+                ("Title of Show*", self.other_extension_title_input, payload["other_extension_title"]),
             ]
-            if any(value is None or not str(value).strip() for value in required):
-                QMessageBox.warning(self, "Validation", "Please fill all required fields marked with *.")
-                return False
-            return True
+            return self._show_required_field_errors(required_fields)
 
         # Training modules have different required fields
         if self.module_name in ["Training Programmes", "Vocational Training Programmes"]:
             if not self.department_combo.currentData():
-                QMessageBox.warning(self, "Validation", "Please select Department first.")
+                self._show_field_validation_error("Please select Department first.", self.department_combo)
                 return False
             if payload["training_end_date"] and payload["training_end_date"] < payload["activity_date"]:
-                QMessageBox.warning(self, "Validation", "End Date cannot be before Start Date.")
+                self._show_field_validation_error("End Date cannot be before Start Date.", self.end_date_input)
                 return False
 
-            required = [
-                payload["training_title"],
-                payload["village"],
-                payload["training_type"],
-                payload["clientele"],
-                payload["training_farmer_count"],
+            required_fields = [
+                ("Title*", self.farmer_name_input, payload["training_title"]),
+                ("Venue*", self.village_input, payload["village"]),
+                ("Training Type*", self.training_type_combo, payload["training_type"]),
+                ("Clientele*", self.clientele_input, payload["clientele"]),
+                ("No. of Farmers*", self.training_farmer_count_input, self.training_farmer_count_input.text().strip()),
             ]
-            if any(value is None or not str(value).strip() for value in required):
-                QMessageBox.warning(self, "Validation", "Please fill all required fields marked with *.")
+            if not self._show_required_field_errors(required_fields):
                 return False
 
             if payload["venue_is_offline"]:
                 offline_required = [
-                    payload["venue_village"],
-                    payload["venue_taluka"] if payload["venue_taluka"] != "Select Taluka" else "",
-                    payload["venue_district"] if payload["venue_district"] != "Select District" else "",
+                    ("Village*", self.venue_offline_village_input, payload["venue_village"]),
+                    ("Taluka*", self.venue_offline_taluka_input, payload["venue_taluka"] if payload["venue_taluka"] != "Select Taluka" else ""),
+                    ("District*", self.venue_offline_district_input, payload["venue_district"] if payload["venue_district"] != "Select District" else ""),
                 ]
-                if any(not value for value in offline_required):
-                    QMessageBox.warning(self, "Validation", "Please fill offline venue Village, Taluka, and District.")
+                if not self._show_required_field_errors(offline_required):
                     return False
 
             if not self.training_farmer_forms:
@@ -2611,61 +2708,69 @@ class ActivityFormWidget(QWidget):
 
             return True
 
-        required = [
-            payload["farmer_name"],
-            payload["village"],
-            payload["contact_number"],
+        required_fields = [
+            ("Farmer Name*" if self.module_name == "Visitor Farmers" else "Title of OFT*" if self.module_name == "On Farm Testing (OFT)" else "Title of FLD*" if self.module_name == "Front Line Demonstrations (FLD)" else "Farmer Name*", self.farmer_name_input, payload["farmer_name"]),
+            ("Crop Variety*" if self._is_oft_style_module() else "Village*", self.village_input, payload["village"]),
+            ("No. of Farmers*" if self._is_oft_style_module() else "Mobile No.*", self.contact_input, payload["contact_number"]),
         ]
 
-        if self._is_oft_style_module():
-            required.extend([payload["description"], self.remarks_input.text().strip()])
-
         if self.module_name == "Visitor Farmers":
-            required.extend(
+            district = self.district_input.currentText().strip()
+            tehsil = self.tehsil_input.currentText().strip()
+            required_fields.extend(
                 [
-                    self.tehsil_input.currentText().strip()
-                    if self._is_valid_tehsil(self.district_input.currentText().strip(), self.tehsil_input.currentText().strip())
-                    else "",
-                    self.district_input.currentText().strip()
-                    if self._is_valid_district(self.district_input.currentText().strip())
-                    else "",
-                    self.scientist_input.text().strip(),
-                    payload["activity_type"],
+                    ("District*", self.district_input, district if self._is_valid_district(district) else ""),
+                    ("Tehsil*", self.tehsil_input, tehsil if self._is_valid_tehsil(district, tehsil) else ""),
+                    ("Name of Scientist*", self.scientist_input, self.scientist_input.text().strip()),
+                    ("Purpose*", self.activity_type_input, payload["activity_type"]),
                 ]
             )
 
-        if self.module_name not in ["Training Programmes", "Vocational Training Programmes"]:
-            required.append(payload["activity_type"])
-        if any(not x for x in required):
-            QMessageBox.warning(self, "Validation", "Please fill all required fields marked with *.")
+        if self._is_oft_style_module():
+            required_fields.extend(
+                [
+                    ("Department*", self.department_combo, payload["department_id"]),
+                    ("Activity Type*", self.activity_type_input, payload["activity_type"]),
+                    ("Area*", self.remarks_input, self.remarks_input.text().strip()),
+                ]
+            )
+            if self.module_name == "On Farm Testing (OFT)":
+                for label, widget in (
+                    ("Technical Assessment t1*", self.oft_t1_input),
+                    ("Technical Assessment t2*", self.oft_t2_input),
+                    ("Technical Assessment t3*", self.oft_t3_input),
+                ):
+                    required_fields.append((label, widget, widget.text().strip()))
+            elif self.module_name == "Front Line Demonstrations (FLD)":
+                technical_widget = getattr(self, "fld_technical_widget", None)
+                technical_assessment = self._get_fld_technical_assessment()
+                required_fields.append(("Technical Assessment*", technical_widget, technical_assessment))
+            if self.module_name == "On Farm Testing (OFT)" or self.season_combo.isVisible():
+                required_fields.append(("Season*", self.season_combo, payload["season"]))
+        elif self.module_name not in ["Training Programmes", "Vocational Training Programmes"]:
+            required_fields.append(
+                ("Activity Type*", self.activity_type_input, payload["activity_type"])
+            )
+        if not self._show_required_field_errors(required_fields):
             return False
 
         if self._is_oft_style_module():
             if not self.department_combo.currentData():
-                QMessageBox.warning(self, "Validation", "Please select Department first.")
+                self._show_field_validation_error("Please select Department first.", self.department_combo)
                 return False
-            if self.module_name == "On Farm Testing (OFT)" and hasattr(self, "oft_t1_input"):
-                technical_values = [
-                    self.oft_t1_input.text().strip(),
-                    self.oft_t2_input.text().strip(),
-                    self.oft_t3_input.text().strip(),
-                ]
-                if any(not value for value in technical_values):
-                    QMessageBox.warning(self, "Validation", "Please fill technical assessment t1, t2, and t3.")
-                    return False
             if payload["activity_type"] != "Assessment":
-                QMessageBox.warning(self, "Validation", "Activity Type is fixed to Assessment.")
+                self._show_field_validation_error("Activity Type is fixed to Assessment.", self.activity_type_input)
                 return False
             if payload["season"] not in ["Kharif", "Rabi"]:
-                QMessageBox.warning(self, "Validation", "Please select Season.")
+                self._show_field_validation_error("Please select Season.", self.season_combo)
                 return False
 
         if self._is_oft_style_module():
             if not payload["contact_number"].isdigit():
-                QMessageBox.warning(self, "Validation", "No. of Farmers must be numeric.")
+                self._show_field_validation_error("No. of Farmers must be numeric.", self.contact_input)
                 return False
         elif not payload["contact_number"].isdigit() or len(payload["contact_number"]) != 10:
-            QMessageBox.warning(self, "Validation", "Mobile number must be exactly 10 digits.")
+            self._show_field_validation_error("Mobile number must be exactly 10 digits.", self.contact_input)
             return False
         return True
 
